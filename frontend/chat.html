@@ -1,24 +1,32 @@
-<!-- chat.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>SecureChat - Chat</title>
-  <link rel="stylesheet" href="style.css" />
+  <meta charset="UTF-8">
+  <title>Secure Chat</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="container">
-    <h2 id="welcomeText">Welcome, Anonymous!</h2>
+  <h1>Welcome to SecureChat</h1>
 
-    <div class="chat-box" id="chatBox">
-      <!-- Messages will appear here -->
-    </div>
+  <h2 id="welcomeText"></h2>
 
-    <div class="input-area">
-      <input type="text" id="messageInput" placeholder="Type your message..." />
-      <button onclick="sendMessage()">Send</button>
-    </div>
+  <div id="searchArea">
+    <h3>Search for a user to chat with:</h3>
+    <input type="text" id="searchInput" placeholder="Enter username to search" />
+    <button onclick="searchUser()">Send Request</button>
+    <p id="searchMessage"></p>
+  </div>
+
+  <div id="inbox">
+    <h3>Inbox</h3>
+    <!-- Incoming requests will appear here -->
+  </div>
+
+  <div id="chatArea">
+    <h3>Chat Box</h3>
+    <div id="chatBox" style="height: 300px; overflow-y: scroll; border: 1px solid #ccc;"></div>
+    <input type="text" id="messageInput" placeholder="Type a message..." />
+    <button onclick="sendMessage()">Send</button>
   </div>
 
   <script src="chat.js"></script>
