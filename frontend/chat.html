@@ -1,32 +1,58 @@
-<!DOCTYPE html>
+
+  <!DOCTYPE html>
 <html lang="en">
 <head>
+  <script src="https://kit.fontawesome.com/9039ddc239.js" crossorigin="anonymous"></script>
+
+    .button {
+  transition-duration: 0.4s;
+  margin: 0%;
+  height:25px;
+}
+
+.button1:hover {
+  background-color: #502c4a; 
+  color: white;
+}
+.button2:hover {
+  background-color: #146f63; 
+  color: white;
+}
+  </style>
   <meta charset="UTF-8">
   <title>Secure Chat</title>
   <link rel="stylesheet" href="style.css">
 </head>
+<style>
+  body {
+    background-image: url("file:///C:/Users/nandi/Desktop/my%20code/Screenshots/Screenshot 2025-04-13 123210.png"); background-size: cover;margin:0%";
+  }
+  </style>
+  
 <body>
-  <h1>Welcome to SecureChat</h1>
+  
+  <h1 style="margin:0%;text-align: center;padding: 50px;color: rgb(255, 255, 255);"> Welcome To SecureChat</h1>
 
-  <h2 id="welcomeText"></h2>
 
   <div id="searchArea">
-    <h3>Search for a user to chat with:</h3>
-    <input type="text" id="searchInput" placeholder="Enter username to search" />
-    <button onclick="searchUser()">Send Request</button>
+  
+    <h3 style="color:antiquewhite;height:30px;margin: 0%;">Search</h3>
+    <input type="text" id="searchInput;color:white" placeholder="Enter username to search" />
+    <button class="button button1">send request</button>
     <p id="searchMessage"></p>
   </div>
 
   <div id="inbox">
-    <h3>Inbox</h3>
+    <p style="color:aliceblue"><b>Inbox</b></p>
+    <div style="width:40%;height:40%px;margin:0%"><i class="fa-solid fa-inbox fa-2xl" style="color: #e8eef1;"></i></div>
     <!-- Incoming requests will appear here -->
   </div>
 
   <div id="chatArea">
-    <h3>Chat Box</h3>
+    <h3 style="color:aliceblue"><b>Chat Box</b></h3>
     <div id="chatBox" style="height: 300px; overflow-y: scroll; border: 1px solid #ccc;"></div>
     <input type="text" id="messageInput" placeholder="Type a message..." />
-    <button onclick="sendMessage()">Send</button>
+    <button class="button button2">send</button>
   </div>
 
   <script src="chat.js"></script>
