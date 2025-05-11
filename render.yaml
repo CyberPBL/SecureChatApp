@@ -8,3 +8,4 @@ services:
     envVars:
       - key: FLASK_ENV
         value: production
+    ref: feature-new-feature  # Specify the branch name here
