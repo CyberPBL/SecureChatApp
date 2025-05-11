@@ -4,8 +4,8 @@ services:
     env: python
     buildCommand: ""
     startCommand: gunicorn app:app
-    workingDir: backend
     envVars:
       - key: FLASK_ENV
         value: production
-    ref: feature-new-feature  # Specify the branch name here
+    # Working directory should be handled correctly through the directory structure in your GitHub repo
+    # For Render, you need to make sure that your Flask app (app.py) is placed in the root of the repository or defined via the settings in Render's dashboard UI.
