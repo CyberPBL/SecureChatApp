@@ -1,1 +1,11 @@
+services:
+  - type: web
+    name: secure-chat-app
+    env: python
+    buildCommand: ""
+    startCommand: gunicorn app:app
+    workingDir: backend
+    envVars:
+      - key: FLASK_ENV
+        value: production
 
