@@ -1,0 +1,140 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: 'Poppins', sans-serif;
+}
+
+body {
+  background-color: #121212;
+  color: #ffffff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 2rem;
+}
+
+.container {
+  background: #1e1e1e;
+  padding: 2rem;
+  border-radius: 16px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  width: 100%;
+  max-width: 500px;
+  text-align: center;
+}
+
+h1 {
+  font-size: 2rem;
+  margin-bottom: 1rem;
+  color: #00ffe7;
+}
+
+input, button {
+  padding: 0.8rem;
+  margin: 0.5rem 0;
+  width: 100%;
+  border: none;
+  border-radius: 10px;
+  font-size: 1rem;
+  transition: background 0.3s ease, color 0.3s ease;
+}
+
+input {
+  background-color: #2e2e2e;
+  color: white;
+}
+
+button {
+  background-color: #00ffe7;
+  color: #121212;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button:hover {
+  background-color: #00b8a9;
+}
+
+.footer {
+  margin-top: 2rem;
+  font-size: 0.8rem;
+  color: #888;
+}
+
+.chat-box {
+  background-color: #2e2e2e;
+  padding: 1rem;
+  height: 300px;
+  overflow-y: auto;
+  margin: 1rem 0;
+  border-radius: 10px;
+  text-align: left;
+}
+
+.input-area {
+  display: flex;
+  gap: 10px;
+}
+
+.input-area input {
+  flex: 1;
+}
+
+.message {
+  background-color: #444;
+  padding: 0.5rem;
+  margin: 0.3rem 0;
+  border-radius: 8px;
+  color: #fff;
+}
+
+.message-time {
+  font-size: 0.8rem;
+  color: #888;
+  text-align: right;
+  margin-top: 0.3rem;
+}
+
+#searchArea, #inbox {
+  background-color: #2e2e2e;
+  padding: 1rem;
+  margin-top: 1rem;
+  border-radius: 10px;
+}
+
+#searchInput {
+  padding: 0.8rem;
+  width: 80%;
+  margin-right: 10px;
+  background-color: #2e2e2e;
+  color: white;
+}
+
+#searchArea button {
+  background-color: #00ffe7;
+  color: #121212;
+  padding: 0.8rem;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+#searchArea button:hover {
+  background-color: #00b8a9;
+}
+
+@media (max-width: 600px) {
+  .container {
+    padding: 1rem;
+  }
+
+  .chat-box {
+    height: 250px;
+  }
+
+  .input-area {
+    flex-direction: column;
+  }
+}

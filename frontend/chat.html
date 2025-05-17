@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Secure Chat</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <h1>Welcome to SecureChat</h1>
+
+  <h2 id="welcomeText"></h2>
+
+  <div id="searchArea">
+    <h3>Search for a user to chat with:</h3>
+    <input type="text" id="searchInput" placeholder="Enter username to search" />
+    <button onclick="searchUser()">Send Request</button>
+    <p id="searchMessage"></p>
+  </div>
+
+  <div id="inbox">
+    <h3>Inbox</h3>
+    <!-- Incoming requests will appear here -->
+  </div>
+
+  <div id="chatArea">
+    <h3>Chat Box</h3>
+    <div id="chatBox" style="height: 300px; overflow-y: scroll; border: 1px solid #ccc;"></div>
+    <input type="text" id="messageInput" placeholder="Type a message..." />
+    <button onclick="sendMessage()">Send</button>
+  </div>
+
+  <!-- Load the chat functionality -->
+  <script src="chat.js"></script>
+
+  <!-- Script to set welcome text based on session -->
+  <script>
+    window.onload = function () {
+      const username = sessionStorage.getItem("username");
+      if (username) {
+        document.getElementById("welcomeText").textContent = `Welcome, ${username}!`;
+      } else {
+        alert("You are not logged in. Redirecting to login page...");
+        window.location.href = "index.html";
+      }
+    };
+  </script>
+</body>
+</html>

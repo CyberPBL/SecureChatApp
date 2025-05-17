@@ -1,12 +1,23 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Secure Chat App</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SecureChat - Anonymous Chat</title>
+  <link rel="stylesheet" href="style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
 </head>
 <body>
-    <h1>Welcome to Secure Chat App</h1>
-    <p>This is the frontend of our secure chat application.</p>
+  <div class="container">
+    <h1>Welcome to SecureChat</h1>
+    <input type="text" id="username" placeholder="Enter your Anonymous ID" required />
+    <input type="password" id="pin" placeholder="Enter Secure PIN" required />
+    <button onclick="startChat()">Start Chat</button>
+    <div class="footer">
+      Your identity is protected. Chats are temporary.
+    </div>
+  </div>
+
+  <script src="script.js"></script>
 </body>
 </html>
