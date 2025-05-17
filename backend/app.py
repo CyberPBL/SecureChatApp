@@ -175,6 +175,35 @@ def get_messages():
     if user1 not in chats or user2 not in chats[user1]:
         return jsonify({"success": False, "message": "No messages found."})
     return jsonify({"success": True, "messages": chats[user1][user2]})
+@app.route('/encrypt', methods=['POST'])
+def encrypt_message():
+    data = request.get_json()
+    message = data.get('message')
+    key = data.get('key')
+
+    if not message or not key:
+        return jsonify({'error': 'Missing message or key'}), 400
+
+    try:
+        encrypted = AesEncryption.encrypt(message, key)
+        return jsonify({'encrypted': encrypted})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/decrypt', methods=['POST'])
+def decrypt_message():
+    data = request.get_json()
+    encrypted_message = data.get('encrypted')
+    key = data.get('key')
+
+    if not encrypted_message or not key:
+        return jsonify({'error': 'Missing encrypted message or key'}), 400
+
+    try:
+        decrypted = AesEncryption.decrypt(encrypted_message, key)
+        return jsonify({'decrypted': decrypted})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
   app.run(host='0.0.0.0', port=5000, debug=True)
