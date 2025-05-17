@@ -1,3 +1,6 @@
+// Backend URL deployed on Render
+const API_BASE_URL = "https://securechatapp-ys8y.onrender.com";
+
 // Function to hash the pin before sending it
 async function hashPin(pin) {
   const encoder = new TextEncoder();
@@ -33,7 +36,7 @@ function startChat() {
 
   hashPin(pin).then(hashedPin => {
     // Check if the user already exists in the backend
-    fetch("http://192.168.0.169:5000/check-user", {
+    fetch(`${API_BASE_URL}/check-user`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username })
@@ -60,7 +63,7 @@ function startChat() {
 
 // Function to log in
 function loginUser(username, hashedPin) {
-  fetch("http://192.168.0.169:5000/login", {
+  fetch(`${API_BASE_URL}/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username, pin: hashedPin })
@@ -84,7 +87,7 @@ function loginUser(username, hashedPin) {
 
 // Function to register
 function registerUser(username, hashedPin) {
-  fetch("http://192.168.0.169:5000/register", {
+  fetch(`${API_BASE_URL}/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username, pin: hashedPin })
