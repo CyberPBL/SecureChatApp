@@ -9,6 +9,9 @@ import os
 import json
 
 app = Flask(__name__)
+@app.route('/')
+def home():
+    return 'SecureChat Backend is running!'
 CORS(app, resources={r"/*": {"origins": "*"}})  # For testing only
 
 
