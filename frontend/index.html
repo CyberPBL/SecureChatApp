@@ -2,22 +2,49 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SecureChat - Anonymous Chat</title>
-  <link rel="stylesheet" href="style.css" />
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+  <title>SecureChat Login</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 1em;
+    }
+    #searchResult button {
+      margin: 0.2em;
+    }
+  </style>
 </head>
 <body>
-  <div class="container">
-    <h1>Welcome to SecureChat</h1>
-    <input type="text" id="username" placeholder="Enter your Anonymous ID" required />
-    <input type="password" id="pin" placeholder="Enter Secure PIN" required />
-    <button onclick="startChat()">Start Chat</button>
-    <div class="footer">
-      Your identity is protected. Chats are temporary.
-    </div>
+  <h2>Login or Search User</h2>
+
+  <div>
+    <label for="usernameInput">Enter Username:</label>
+    <input id="usernameInput" type="text" />
+    <button id="loginBtn">Login</button>
   </div>
 
-  <script src="script.js"></script>
+  <hr />
+
+  <div>
+    <label for="searchUser">Search User to Chat:</label>
+    <input id="searchUser" type="text" />
+    <button onclick="searchUser()">Search</button>
+  </div>
+  <div id="searchResult"></div>
+
+  <script>
+    document.getElementById("loginBtn").onclick = () => {
+      const username = document.getElementById("usernameInput").value.trim();
+      if (!username) {
+        alert("Please enter a username to login.");
+        return;
+      }
+      sessionStorage.setItem("username", username);
+      window.location.href = "chat.html";
+    };
+
+    function searchUser() {
+      alert("Please login first to search users.");
+    }
+  </script>
 </body>
 </html>

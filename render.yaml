@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: securechat-backend
+    env: python
+    plan: free
+    buildCommand: ""
+    startCommand: gunicorn app:app
+    workingDir: backend
+    autoDeploy: true

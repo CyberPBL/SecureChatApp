@@ -1,165 +1,144 @@
-let username = localStorage.getItem("username"); // Assuming user has logged in
-let currentReceiver = ''; // Track the current user to chat with
+document.addEventListener("DOMContentLoaded", function () {
+  const username = sessionStorage.getItem("username");
 
-// Update the welcome message
-document.getElementById("welcomeText").innerText = `Welcome, ${username}!`;
+  if (!username) {
+    sessionStorage.clear();
+    alert("Not logged in. Redirecting...");
+    window.location.href = "index.html";
+    return;
+  }
 
-// Function to send a chat request to another user
-function searchUser() {
-    const searchUsername = document.getElementById("searchInput").value;
-    if (!searchUsername) {
-        alert("Please enter a username to search.");
-        return;
+  let currentChatUser = null;
+  const BACKEND_URL = "https://securechatapp-ys8y.onrender.com";
+  const socket = io(BACKEND_URL);
+
+  socket.on("connect", () => {
+    console.log("✅ Connected to Socket.IO");
+    socket.emit("register_user", { username });
+  });
+
+  // Receive message
+  socket.on("receive_message", (data) => {
+    if (data.username && data.message) {
+      const chatBox = document.getElementById("chatBox");
+      if (chatBox) {
+        chatBox.innerHTML += `<div><b>${data.username}:</b> ${data.message}</div>`;
+        chatBox.scrollTop = chatBox.scrollHeight;
+
+        // Optional: Auto delete after 10 seconds
+        setTimeout(() => {
+          if (chatBox.lastChild) chatBox.lastChild.remove();
+        }, 10000);
+      }
+    }
+  });
+
+  // Incoming chat request handler
+  socket.on("chat_request", (data) => {
+    const inbox = document.getElementById("inboxRequests");
+    if (inbox) {
+      inbox.innerHTML +=
+        `<div>
+          <b>${data.from_user}</b> wants to chat. 
+          <button onclick="acceptChat('${data.from_user}')">Accept</button>
+        </div>`;
+    }
+  });
+
+  // When chat is approved
+  socket.on("chat_request_approved", (data) => {
+    if (!data.approved) {
+      alert("Chat request was declined.");
+      return;
+    }
+    currentChatUser = data.by_user;
+    const chatArea = document.getElementById("chatArea");
+    const chatBox = document.getElementById("chatBox");
+    if (chatArea && chatBox) {
+      chatArea.style.display = "block";
+      chatBox.innerHTML = `<i>Chat with ${currentChatUser} started...</i><br>`;
+    }
+    const room = [username, currentChatUser].sort().join('_');
+    socket.emit("join", { username, room });
+  });
+
+  // Search for user and send chat request
+  window.searchUser = function () {
+    const query = document.getElementById("searchUser").value.trim();
+    if (!query) {
+      alert("Enter a username to search.");
+      return;
     }
 
-    document.getElementById("searchButton").disabled = true;
-
-    fetch("http://localhost:5000/request-chat", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-            from: username,
-            to: searchUsername
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        document.getElementById("searchButton").disabled = false;
-
-        if (data.success) {
-            document.getElementById("searchMessage").innerText = `Request sent to ${searchUsername}.`;
+    fetch(`${BACKEND_URL}/search_user?query=${encodeURIComponent(query)}`)
+      .then((res) => res.json())
+      .then((data) => {
+        const resultDiv = document.getElementById("searchResult");
+        resultDiv.innerHTML = "";
+        if (data.success && data.users.length > 0) {
+          data.users.forEach((user) => {
+            if (user.username !== username) {
+              const btn = document.createElement("button");
+              btn.textContent = `Chat with ${user.username}`;
+              btn.onclick = () => {
+                socket.emit("send_chat_request", {
+                  from_user: username,
+                  to_user: user.username,
+                });
+                alert(`Chat request sent to ${user.username}`);
+              };
+              resultDiv.appendChild(btn);
+            } else {
+              resultDiv.innerHTML = "<i>Cannot chat with yourself.</i>";
+            }
+          });
         } else {
-            document.getElementById("searchMessage").innerText = `Error: ${data.message}`;
+          resultDiv.innerHTML = "<i>No users found.</i>";
         }
-    })
-    .catch(error => {
-        document.getElementById("searchButton").disabled = false;
-        console.error("Error:", error);
-        document.getElementById("searchMessage").innerText = "An error occurred while sending the request.";
+      })
+      .catch(() => {
+        alert("Error searching users.");
+      });
+  };
+
+  // Accept chat request
+  window.acceptChat = function (fromUser) {
+    socket.emit("approve_chat_request", {
+      from_user: fromUser,
+      to_user: username,
+      approved: true,
     });
-}
+    // Remove from inbox after accepting
+    const inbox = document.getElementById("inboxRequests");
+    if (inbox) {
+      inbox.innerHTML = "";
+    }
+  };
 
-// ✅ FIXED Function to get and display chat requests in the inbox
-function getInbox() {
-    fetch("http://localhost:5000/get-inbox", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ username: username })
-    })
-    .then(response => response.json())
-    .then(data => {
-        const inboxDiv = document.getElementById("inbox");
-        inboxDiv.innerHTML = "<h3>Inbox</h3>";
+  // Send message button
+  document.getElementById("sendMsgBtn").addEventListener("click", () => {
+    const input = document.getElementById("msgInput");
+    const msg = input.value.trim();
+    if (!msg) return;
 
-        if (!data.inbox || data.inbox.length === 0) {
-            inboxDiv.innerHTML += "<p>No new requests.</p>";
-        } else {
-            data.inbox.forEach(entry => {
-                const requester = entry.from;
-                const requestDiv = document.createElement("div");
-                requestDiv.innerHTML = `
-                    <p>${requester} wants to chat.</p>
-                    <button onclick="acceptRequest('${requester}')">Accept</button>
-                    <button onclick="rejectRequest('${requester}')">Reject</button>
-                `;
-                inboxDiv.appendChild(requestDiv);
-            });
-        }
-    })
-    .catch(error => {
-        console.error("Error:", error);
-        alert("Failed to load inbox.");
+    if (!currentChatUser) {
+      alert("No chat user selected.");
+      return;
+    }
+
+    const room = [username, currentChatUser].sort().join('_');
+    socket.emit("send_message", {
+      from_user: username,
+      to_user: currentChatUser,
+      message: msg,
+      room,
     });
-}
 
-// Function to accept a chat request
-function acceptRequest(fromUser) {
-    fetch("http://localhost:5000/accept-request", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-            to: username,
-            from: fromUser
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            currentReceiver = fromUser;
-            alert(`You are now chatting with ${fromUser}`);
-            getChatHistory(fromUser);
-        } else {
-            alert("Failed to accept the request.");
-        }
-    })
-    .catch(error => {
-        console.error("Error:", error);
-        alert("An error occurred while accepting the chat request.");
-    });
-}
-
-// Function to reject a chat request
-function rejectRequest(fromUser) {
-    fetch("http://localhost:5000/reject-request", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-            to: username,
-            from: fromUser
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            alert(`You rejected the chat request from ${fromUser}`);
-            getInbox();
-        } else {
-            alert("Failed to reject the request.");
-        }
-    })
-    .catch(error => {
-        console.error("Error:", error);
-        alert("An error occurred while rejecting the chat request.");
-    });
-}
-
-// ✅ FIXED getChatHistory to access correct data
-function getChatHistory(user) {
-    fetch("http://localhost:5000/get-messages", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-            user1: username,
-            user2: user
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        const chatBox = document.getElementById("chatBox");
-        chatBox.innerHTML = "";
-
-        if (!data.messages || data.messages.length === 0) {
-            chatBox.innerHTML = "<p>No chat history found.</p>";
-        } else {
-            data.messages.forEach(message => {
-                const messageDiv = document.createElement("div");
-                messageDiv.innerHTML = `<strong>${message.sender}:</strong> ${message.message}`;
-                chatBox.appendChild(messageDiv);
-            });
-        }
-    })
-    .catch(error => {
-        console.error("Error:", error);
-        alert("Failed to load chat history.");
-    });
-}
+    const chatBox = document.getElementById("chatBox");
+    if (chatBox) {
+      chatBox.innerHTML += `<div><b>You:</b> ${msg}</div>`;
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+    input.value = "";
+  });
+});

@@ -1,5 +1,4 @@
-// Backend URL deployed on Render
-const API_BASE_URL = "https://securechatapp-ys8y.onrender.com";
+const API_BASE_URL = "https://securechatapp-ys8y.onrender.com/"; // Replace with your backend URL
 
 // Function to hash the pin before sending it
 async function hashPin(pin) {
@@ -10,20 +9,21 @@ async function hashPin(pin) {
   return hashArray.map(byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
-// Check if the user is already logged in from session storage
-window.onload = function() {
+// Check if user is already logged in via sessionStorage
+window.onload = function () {
   const username = sessionStorage.getItem("username");
   if (username) {
     alert(`Welcome back, ${username}!`);
-    window.location.href = "chat.html";  // Redirect to chat page
+    window.location.href = "chat.html"; // Redirect to chat page
   }
 };
 
-function startChat() {
+// Main function triggered by Start Chat button
+async function startChat() {
   const username = document.getElementById('username').value.trim();
   const pin = document.getElementById('pin').value.trim();
 
-  if (username === "" || pin === "") {
+  if (!username || !pin) {
     alert("Please fill in both fields.");
     return;
   }
@@ -34,77 +34,83 @@ function startChat() {
     return;
   }
 
-  hashPin(pin).then(hashedPin => {
-    // Check if the user already exists in the backend
-    fetch(`${API_BASE_URL}/check-user`, {
+  const button = document.querySelector('button');
+  button.disabled = true;
+  button.textContent = "Processing...";
+
+  try {
+    const hashedPin = await hashPin(pin);
+
+    console.log("Sending to /check-user:", username);
+
+    const checkUserRes = await fetch(`${API_BASE_URL}/check-user`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username })
-    })
-    .then(response => response.json())
-    .then(result => {
-      if (result.exists) {
-        // User exists → try logging in
-        loginUser(username, hashedPin);
-      } else {
-        // User does not exist → register first
-        registerUser(username, hashedPin);
-      }
-    })
-    .catch(err => {
-      console.error("Error checking user existence:", err);
-      alert("Error checking username. Try again.");
     });
-  }).catch(err => {
-    console.error("Pin hashing error:", err);
-    alert("Error hashing pin.");
-  });
+
+    const checkUserData = await checkUserRes.json();
+
+    console.log("Response from /check-user:", checkUserData);
+
+    if (checkUserData.exists) {
+      await loginUser(username, hashedPin);
+    } else {
+      await registerUser(username, hashedPin);
+    }
+  } catch (error) {
+    console.error("Error during startChat:", error);
+    alert("An error occurred. Please try again.");
+  } finally {
+    button.disabled = false;
+    button.textContent = "Start Chat";
+  }
 }
 
-// Function to log in
-function loginUser(username, hashedPin) {
-  fetch(`${API_BASE_URL}/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, pin: hashedPin })
-  })
-  .then(response => response.json())
-  .then(data => {
-    if (data.success) {
-      // Pop-up message for returning users
-      alert("Welcome back, " + username + "!");
-      sessionStorage.setItem("username", username);  // Save username in sessionStorage
-      window.location.href = "chat.html";  // Redirect to chat page
+// Login function
+async function loginUser(username, hashedPin) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, pin: hashedPin })
+    });
+
+    const data = await response.json();
+
+    if (response.ok && data.success) {
+      alert(`Welcome back, ${username}!`);
+      sessionStorage.setItem("username", username);
+      window.location.href = "chat.html";
     } else {
-      alert("Login Failed: " + data.message);
+      alert("Login Failed: " + (data.message || "Unknown error"));
     }
-  })
-  .catch(error => {
+  } catch (error) {
     console.error("Login error:", error);
     alert("Could not log in.");
-  });
+  }
 }
 
-// Function to register
-function registerUser(username, hashedPin) {
-  fetch(`${API_BASE_URL}/register`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, pin: hashedPin })
-  })
-  .then(response => response.json())
-  .then(data => {
-    if (data.success) {
-      // Pop-up message for new users
-      alert("Registration successful! Welcome, " + username + "!");
-      sessionStorage.setItem("username", username);  // Save username in sessionStorage
-      window.location.href = "chat.html";  // Redirect to chat page
+// Registration function
+async function registerUser(username, hashedPin) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, pin: hashedPin })
+    });
+
+    const data = await response.json();
+
+    if (response.ok && data.success) {
+      alert(`Registration successful! Welcome, ${username}!`);
+      sessionStorage.setItem("username", username);
+      window.location.href = "chat.html";
     } else {
-      alert("Registration Failed: " + data.message);
+      alert("Registration Failed: " + (data.message || "Unknown error"));
     }
-  })
-  .catch(error => {
+  } catch (error) {
     console.error("Registration error:", error);
     alert("Could not register.");
-  });
+  }
 }
