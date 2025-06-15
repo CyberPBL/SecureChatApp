@@ -1,2 +1,13 @@
 __pycache__/
 .env
+venv/
+venv_test/
+*.pyc
+*.pyo
+*.log
+.DS_Store
+*.sqlite3
+node_modules/
+dist/
+build/
+
