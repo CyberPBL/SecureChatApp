@@ -1,1 +1,7 @@
-app
+Flask
+Flask-Cors
+flask-socketio
+python-dotenv
+pymongo
+pycryptodome
+gunicorn
