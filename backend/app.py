@@ -10,6 +10,10 @@ from pymongo.server_api import ServerApi
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad, unpad
 from dotenv import load_dotenv
+from werkzeug.security import generate_password_hash, check_password_hash
+
+
+
 
 # Load environment variables
 load_dotenv()
@@ -30,8 +34,21 @@ db = client["securechat_db"]
 users_collection = db["users"]
 
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": "https://securechat-frontend-9qs2.onrender.com"}})
-socketio = SocketIO(app, cors_allowed_origins="https://securechat-frontend-9qs2.onrender.com")
+CORS(app, supports_credentials=True, resources={
+    r"/*": {
+        "origins": [
+            "http://127.0.0.1:5500",
+            "http://localhost:5500",
+            "https://securechat-frontend-9qs2.onrender.com"
+        ]
+    }
+})
+socketio = SocketIO(app, cors_allowed_origins=[
+    "http://127.0.0.1:5500",
+    "http://localhost:5500",
+    "https://securechat-frontend-9qs2.onrender.com"
+])
+
 
 # Track active users and their socket IDs
 active_users = {}  # username -> sid
@@ -63,7 +80,41 @@ def search_user():
         return jsonify({"success": False, "message": "No query provided", "users": []})
     results = list(users_collection.find({"username": query}, {"_id": 0, "username": 1}))
     return jsonify({"success": True, "users": results})
+    
+@app.route('/register', methods=['POST'])
+def register():
+    data = request.json
+    username = data.get('username')
+    pin = data.get('pin')
 
+    if not username or not pin:
+        return jsonify({"success": False, "message": "Username and PIN are required"}), 400
+
+    # Check if user already exists
+    if users_collection.find_one({"username": username}):
+        return jsonify({"success": False, "message": "Username already exists"}), 409
+
+    # Hash and store PIN
+    hashed_pin = generate_password_hash(pin)
+    users_collection.insert_one({"username": username, "pin": hashed_pin})
+    return jsonify({"success": True, "message": "User registered successfully"}), 201
+
+
+@app.route('/login', methods=['POST'])
+def login():
+    data = request.json
+    username = data.get('username')
+    pin = data.get('pin')
+
+    if not username or not pin:
+        return jsonify({"success": False, "message": "Username and PIN are required"}), 400
+
+    user = users_collection.find_one({"username": username})
+    if user and check_password_hash(user['pin'], pin):
+        return jsonify({"success": True, "message": "Login successful"}), 200
+    else:
+        return jsonify({"success": False, "message": "Invalid credentials"}), 401
+ 
 @socketio.on('connect')
 def handle_connect():
     print('✅ Client connected')
@@ -150,6 +201,15 @@ def handle_send_message(data):
         'username': from_user,
         'message': message
     }, room=room)
+
+
+@app.after_request
+def apply_cors(response):
+    response.headers["Access-Control-Allow-Origin"] = request.headers.get("Origin")
+    response.headers["Access-Control-Allow-Credentials"] = "true"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type,Authorization"
+    response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
+    return response
 
 if __name__ == '__main__':
     socketio.run(app, host='0.0.0.0', port=8000, debug=DEBUG_MODE)

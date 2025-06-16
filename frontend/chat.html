@@ -1,46 +1,30 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8" />
   <title>SecureChat - Chat</title>
-  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-  <script src="chat.js" defer></script>
-  <style>
-    #chatArea {
-      display: none;
-      border: 1px solid #ccc;
-      padding: 10px;
-      height: 300px;
-      overflow-y: scroll;
-      margin-bottom: 10px;
-    }
-    #inboxRequests div {
-      margin-bottom: 5px;
-    }
-  </style>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <h2>Welcome to SecureChat</h2>
+  <div class="chat-container">
+    <h2>Welcome to SecureChat</h2>
+    <p>Logged in as: <span id="userId"></span></p>
 
-  <div>
-    <h3>Incoming Chat Requests</h3>
-    <div id="inboxRequests"></div>
-  </div>
+    <h3>Search for a user to chat with:</h3>
+    <input type="text" id="searchUser" placeholder="Enter username to search" />
+    <button onclick="sendRequest()">Send Request</button>
 
-  <div>
-    <label for="searchUser">Search User to Chat:</label>
-    <input id="searchUser" type="text" />
-    <button onclick="searchUser()">Search</button>
-    <div id="searchResult"></div>
-  </div>
+    <h3>Inbox</h3>
+    <div id="inbox">
+      <p>(No messages yet)</p>
+    </div>
 
-  <hr />
-
-  <div id="chatArea">
-    <h3>Chat</h3>
+    <h3>Chat Box</h3>
     <div id="chatBox"></div>
-    <input id="msgInput" type="text" placeholder="Type a message..." />
-    <button id="sendMsgBtn">Send</button>
+
+    <input type="text" id="message" placeholder="Type a message..." />
+    <button onclick="sendMessage()">Send</button>
   </div>
+
+  <script src="chat.js"></script>
 </body>
 </html>

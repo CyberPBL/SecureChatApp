@@ -1,49 +1,65 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <title>SecureChat Login</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 1em;
-    }
-    #searchResult button {
-      margin: 0.2em;
-    }
-  </style>
+  <title>SecureChat - Login/Register</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <h2>Login or Search User</h2>
+  <div class="chat-container">
+    <h2>Welcome to SecureChat</h2>
 
-  <div>
-    <label for="usernameInput">Enter Username:</label>
-    <input id="usernameInput" type="text" />
-    <button id="loginBtn">Login</button>
+    <label for="anonymousId">Username:</label><br>
+    <input type="text" id="anonymousId" placeholder="Enter your anonymous ID"><br><br>
+
+    <label for="securePin">Secure PIN:</label><br>
+    <input type="password" id="securePin" placeholder="Enter your secure PIN"><br><br>
+
+    <button onclick="registerUser()">Register</button>
+    <button onclick="loginUser()">Login</button>
+
+    <p id="authMessage" style="color: red; margin-top: 10px;"></p>
   </div>
-
-  <hr />
-
-  <div>
-    <label for="searchUser">Search User to Chat:</label>
-    <input id="searchUser" type="text" />
-    <button onclick="searchUser()">Search</button>
-  </div>
-  <div id="searchResult"></div>
 
   <script>
-    document.getElementById("loginBtn").onclick = () => {
-      const username = document.getElementById("usernameInput").value.trim();
-      if (!username) {
-        alert("Please enter a username to login.");
-        return;
-      }
-      sessionStorage.setItem("username", username);
-      window.location.href = "chat.html";
-    };
+    const BASE_URL = "http://localhost:8000"; // Replace with deployed URL when needed
 
-    function searchUser() {
-      alert("Please login first to search users.");
+    function registerUser() {
+      const username = document.getElementById("anonymousId").value;
+      const pin = document.getElementById("securePin").value;
+
+      fetch(`${BASE_URL}/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, pin })
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            alert("✅ Registered successfully");
+          } else {
+            document.getElementById("authMessage").textContent = "❌ " + data.message;
+          }
+        });
+    }
+
+    function loginUser() {
+      const username = document.getElementById("anonymousId").value;
+      const pin = document.getElementById("securePin").value;
+
+      fetch(`${BASE_URL}/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, pin })
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            sessionStorage.setItem("username", username);
+            window.location.href = "chat.html";
+          } else {
+            document.getElementById("authMessage").textContent = "❌ " + data.message;
+          }
+        });
     }
   </script>
 </body>
