@@ -1,0 +1,135 @@
+# 🔧 Required Python Libraries
+# Install with pip:
+
+# bash
+# Copy
+# Edit
+# pip install pyotp qrcode
+# 🧩 Backend Changes (Flask - app.py)
+# 🔹 1. On Registration (after username & password):
+# python
+# Copy
+# Edit
+# import pyotp
+# import qrcode
+# import base64
+# from io import BytesIO
+
+# # inside your registration route
+# def generate_totp_secret():
+#     return pyotp.random_base32()
+
+# @app.route('/register', methods=['POST'])
+# def register():
+#     data = request.json
+#     username = data['username']
+#     password = hash_password(data['password'])  # Your existing hashing function
+
+#     totp_secret = generate_totp_secret()
+    
+#     # Save to MongoDB
+#     user_doc = {
+#         'username': username,
+#         'password': password,
+#         'totp_secret': totp_secret  # store raw for now; later encrypt if needed
+#     }
+#     db.users.insert_one(user_doc)
+
+#     # Generate QR Code to show user
+#     totp_uri = pyotp.totp.TOTP(totp_secret).provisioning_uri(name=username, issuer_name="SecureChat")
+#     img = qrcode.make(totp_uri)
+#     buffer = BytesIO()
+#     img.save(buffer)
+#     img_base64 = base64.b64encode(buffer.getvalue()).decode()
+
+#     return jsonify({'qr_code': img_base64, 'secret': totp_secret})
+# 🔹 2. On Login (after password is verified)
+# python
+# Copy
+# Edit
+# @app.route('/verify-otp', methods=['POST'])
+# def verify_otp():
+#     data = request.json
+#     username = data['username']
+#     otp = data['otp']
+
+#     user = db.users.find_one({'username': username})
+#     if not user:
+#         return jsonify({'error': 'User not found'}), 404
+
+#     totp = pyotp.TOTP(user['totp_secret'])
+#     if totp.verify(otp):
+#         return jsonify({'status': 'OTP verified', 'token': create_session_token(username)})
+#     else:
+#         return jsonify({'error': 'Invalid OTP'}), 401
+# 🎨 Frontend Changes
+# 🔹 register.html (or JS side)
+# When user registers:
+
+# html
+# Copy
+# Edit
+# <img id="qrcode" />
+# <p>Or manually enter secret: <span id="secret-text"></span></p>
+# <script>
+#   fetch('/register', {
+#     method: 'POST',
+#     body: JSON.stringify({ username, password }),
+#     headers: { 'Content-Type': 'application/json' }
+#   })
+#   .then(res => res.json())
+#   .then(data => {
+#     document.getElementById("qrcode").src = 'data:image/png;base64,' + data.qr_code;
+#     document.getElementById("secret-text").innerText = data.secret;
+#     // Save fingerprint (optional)
+#     localStorage.setItem("securechat_device", generateDeviceID());
+#   });
+# </script>
+# 🔹 login.html (step 2: After password is correct)
+# Ask for OTP:
+
+# html
+# Copy
+# Edit
+# <input type="text" id="otp" placeholder="Enter 6-digit OTP">
+# <button onclick="verifyOTP()">Verify</button>
+
+# <script>
+# function verifyOTP() {
+#   const username = localStorage.getItem('username');
+#   const otp = document.getElementById('otp').value;
+
+#   fetch('/verify-otp', {
+#     method: 'POST',
+#     body: JSON.stringify({ username, otp }),
+#     headers: { 'Content-Type': 'application/json' }
+#   })
+#   .then(res => res.json())
+#   .then(data => {
+#     if (data.status === 'OTP verified') {
+#       // Redirect to dashboard
+#       window.location.href = "/chat.html";
+#     } else {
+#       alert("Invalid OTP");
+#     }
+#   });
+# }
+# </script>
+# 🧠 BONUS: Device Fingerprinting
+# Simple JS Fingerprint (you can enhance with plugins):
+# javascript
+# Copy
+# Edit
+# function generateDeviceID() {
+#   return btoa(navigator.userAgent + screen.height + screen.width);
+# }
+# Save this fingerprint during registration (localStorage) and match during login.
+
+# ✅ Summary: Files to Update
+# File	What to Add
+# app.py	TOTP generation, QR/secret, OTP verification route
+# register.html	Show QR code, save secret locally or in authenticator
+# login.html	Add OTP field after password is verified
+# script.js	Device fingerprinting (optional but recommended)
+# MongoDB	Add fields: totp_secret, optional device_id
+
