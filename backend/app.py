@@ -4,16 +4,13 @@ import os
 import base64
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from flask_socketio import SocketIO, emit
+from flask_socketio import SocketIO, emit, join_room
 from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad, unpad
 from dotenv import load_dotenv
 from werkzeug.security import generate_password_hash, check_password_hash
-
-
-
 
 # Load environment variables
 load_dotenv()
@@ -49,7 +46,6 @@ socketio = SocketIO(app, cors_allowed_origins=[
     "https://securechat-frontend-9qs2.onrender.com"
 ])
 
-
 # Track active users and their socket IDs
 active_users = {}  # username -> sid
 
@@ -73,6 +69,9 @@ class AesEncryption:
         decrypted = unpad(cipher.decrypt(data[16:]), AES.block_size)
         return decrypted.decode('utf-8')
 
+
+# ---------------- REST API ROUTES ----------------
+
 @app.route('/search_user')
 def search_user():
     query = request.args.get('query', '').strip()
@@ -80,7 +79,7 @@ def search_user():
         return jsonify({"success": False, "message": "No query provided", "users": []})
     results = list(users_collection.find({"username": query}, {"_id": 0, "username": 1}))
     return jsonify({"success": True, "users": results})
-    
+
 @app.route('/register', methods=['POST'])
 def register():
     data = request.json
@@ -90,15 +89,12 @@ def register():
     if not username or not pin:
         return jsonify({"success": False, "message": "Username and PIN are required"}), 400
 
-    # Check if user already exists
     if users_collection.find_one({"username": username}):
         return jsonify({"success": False, "message": "Username already exists"}), 409
 
-    # Hash and store PIN
     hashed_pin = generate_password_hash(pin)
     users_collection.insert_one({"username": username, "pin": hashed_pin})
     return jsonify({"success": True, "message": "User registered successfully"}), 201
-
 
 @app.route('/login', methods=['POST'])
 def login():
@@ -114,7 +110,23 @@ def login():
         return jsonify({"success": True, "message": "Login successful"}), 200
     else:
         return jsonify({"success": False, "message": "Invalid credentials"}), 401
- 
+
+@app.route('/check_user', methods=['POST'])
+def check_user():
+    data = request.json
+    username = data.get('username')
+    if not username:
+        return jsonify({"exists": False, "message": "Username not provided"}), 400
+
+    user = users_collection.find_one({"username": username})
+    if user:
+        return jsonify({"exists": True})
+    else:
+        return jsonify({"exists": False})
+
+
+# ---------------- SOCKET.IO EVENTS ----------------
+
 @socketio.on('connect')
 def handle_connect():
     print('✅ Client connected')
@@ -152,26 +164,32 @@ def handle_send_chat_request(data):
     target_sid = active_users.get(to_user)
     if target_sid:
         emit('chat_request', {'from_user': from_user}, room=target_sid)
+        emit('request_status', {'status': 'sent'}, room=request.sid)
         print(f"📨 Chat request sent from {from_user} to {to_user}")
     else:
-        emit('error', {'message': f'User {to_user} not online or does not exist.'})
+        emit('request_status', {'status': 'user_offline'}, room=request.sid)
+        print(f"❌ Chat request failed - {to_user} offline or not found.")
 
 @socketio.on('approve_chat_request')
 def handle_approve_chat_request(data):
-    from_user = data.get('from_user')
-    to_user = data.get('to_user')
+    from_user = data.get('from_user')  # person accepting/rejecting
+    to_user = data.get('to_user')      # original requester
     approved = data.get('approved')
 
     if not from_user or not to_user or approved is None:
-        emit('error', {'message': 'Missing from_user, to_user, or approved in approval request.'})
+        emit('error', {'message': 'Missing data for approval.'})
         return
 
-    requester_sid = active_users.get(from_user)
+    requester_sid = active_users.get(to_user)
     if requester_sid:
-        emit('chat_request_approved', {'by_user': to_user, 'approved': approved}, room=requester_sid)
-        print(f"✅ Chat request from {from_user} approved by {to_user}: {approved}")
+        emit('chat_request_approved', {
+            'by_user': from_user,
+            'approved': approved
+        }, room=requester_sid)
+        print(f"✅ Chat request from {to_user} was {'approved' if approved else 'rejected'} by {from_user}")
     else:
-        emit('error', {'message': f'User {from_user} not online or does not exist.'})
+        emit('error', {'message': f'User {to_user} is not online.'})
+
 
 @socketio.on('join')
 def handle_join(data):
@@ -202,6 +220,7 @@ def handle_send_message(data):
         'message': message
     }, room=room)
 
+# ---------------- CORS HANDLING ----------------
 
 @app.after_request
 def apply_cors(response):
@@ -210,6 +229,8 @@ def apply_cors(response):
     response.headers["Access-Control-Allow-Headers"] = "Content-Type,Authorization"
     response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
     return response
+
+# ---------------- MAIN ----------------
 
 if __name__ == '__main__':
     socketio.run(app, host='0.0.0.0', port=8000, debug=DEBUG_MODE)
