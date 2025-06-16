@@ -1,0 +1,3 @@
+[submodule "SecureChatApp"]
+	path = SecureChatApp
+	url = https://github.com/ANJALI-RWT/SecureChatApp.git
