@@ -90,27 +90,35 @@ def search_user():
 
 @app.route('/register', methods=['POST'])
 def register():
-    data = request.json
-    username = data.get('username')
-    pin = data.get('pin')
-    public_key = data.get('public_key')  # RSA Public key from frontend
+    try:
+        data = request.get_json()
+        print("📥 Received data:", data)
 
-    if not username or not pin or not public_key:
-        return jsonify({"success": False, "message": "Username, PIN, and Public Key are required"}), 400
+        username = data.get("username")
+        pin = data.get("pin")
+        public_key = data.get("publicKey")  # ✅ MUST match frontend
 
-    # Check if user already exists
-    if users_collection.find_one({"username": username}):
-        return jsonify({"success": False, "message": "Username already exists"}), 409
+        if not username or not pin or not public_key:
+            return jsonify({"success": False, "message": "Username, PIN, and Public Key are required"}), 400
 
-    # Hash the PIN securely
-    hashed_pin = generate_password_hash(pin)
+        # ✅ Check for duplicate usernames
+        if users_collection.find_one({"username": username}):
+            return jsonify({"success": False, "message": "Username already exists"}), 409
 
-    users_collection.insert_one({
-        "username": username,
-        "pin": hashed_pin,
-        "public_key": public_key
-    })
-    return jsonify({"success": True, "message": "User registered successfully"}), 201
+        # ✅ Hash PIN and save
+        hashed_pin = generate_password_hash(pin)
+
+        users_collection.insert_one({
+            "username": username,
+            "pin": hashed_pin,
+            "public_key": public_key
+        })
+
+        return jsonify({"success": True, "message": "User registered successfully"}), 201
+
+    except Exception as e:
+        print("❌ Error in /register:", str(e))
+        return jsonify({"success": False, "message": str(e)}), 500
 
 
 @app.route('/get_public_key')
