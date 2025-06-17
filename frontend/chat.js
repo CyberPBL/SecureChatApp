@@ -1,4 +1,4 @@
-const BASE_URL = "http://localhost:8000";
+const BASE_URL = "https://securechatapp-ys8y.onrender.com";
 const socket = io(BASE_URL);
 
 const username = sessionStorage.getItem("username");

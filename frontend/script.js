@@ -1,4 +1,4 @@
-const BASE_URL = "http://localhost:8000"; // Or your backend URL
+const BASE_URL = "https://securechatapp-ys8y.onrender.com"; // Or your backend URL
 
 function registerUser() {
   const username = document.getElementById("anonymousId").value;

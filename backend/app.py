@@ -40,11 +40,8 @@ CORS(app, supports_credentials=True, resources={
         ]
     }
 })
-socketio = SocketIO(app, cors_allowed_origins=[
-    "http://127.0.0.1:5500",
-    "http://localhost:5500",
-    "https://securechat-frontend-9qs2.onrender.com"
-])
+socketio = SocketIO(app, cors_allowed_origins="*")
+
 
 # Track active users and their socket IDs
 active_users = {}  # username -> sid
@@ -71,6 +68,12 @@ class AesEncryption:
 
 
 # ---------------- REST API ROUTES ----------------
+
+
+@app.route("/")
+def home():
+    return {"message": "SecureChat backend is running ✅"}, 200
+
 
 @app.route('/search_user')
 def search_user():
@@ -231,6 +234,7 @@ def apply_cors(response):
     return response
 
 # ---------------- MAIN ----------------
-
 if __name__ == '__main__':
-    socketio.run(app, host='0.0.0.0', port=8000, debug=DEBUG_MODE)
+    port = int(os.environ.get("PORT", 8000))
+    socketio.run(app, host='0.0.0.0', port=port, debug=DEBUG_MODE)
+
