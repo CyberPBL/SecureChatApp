@@ -20,47 +20,6 @@
     <p id="authMessage" style="color: red; margin-top: 10px;"></p>
   </div>
 
-  <script>
-const BASE_URL = "https://securechatapp-ys8y.onrender.com";
-
-    function registerUser() {
-      const username = document.getElementById("anonymousId").value;
-      const pin = document.getElementById("securePin").value;
-
-      fetch(`${BASE_URL}/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, pin })
-      })
-        .then(res => res.json())
-        .then(data => {
-          if (data.success) {
-            alert("✅ Registered successfully");
-          } else {
-            document.getElementById("authMessage").textContent = "❌ " + data.message;
-          }
-        });
-    }
-
-    function loginUser() {
-      const username = document.getElementById("anonymousId").value;
-      const pin = document.getElementById("securePin").value;
-
-      fetch(`${BASE_URL}/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, pin })
-      })
-        .then(res => res.json())
-        .then(data => {
-          if (data.success) {
-            sessionStorage.setItem("username", username);
-            window.location.href = "chat.html";
-          } else {
-            document.getElementById("authMessage").textContent = "❌ " + data.message;
-          }
-        });
-    }
-  </script>
+<script src="script.js"></script> 
 </body>
 </html>
