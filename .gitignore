@@ -12,3 +12,12 @@ dist/
 build/
 
 
+# Ignore virtual environments
+venv/
+backend/venv/
+frontend/venv/
+venv/
+__pycache__/
+*.pyc
+.vscode/
+.env
