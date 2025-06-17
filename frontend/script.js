@@ -1,4 +1,6 @@
-const BASE_URL = "https://securechatapp-ys8y.onrender.com"; // Or your backend URL
+const BASE_URL = "https://securechatapp-ys8y.onrender.com";
+console.log("Connecting to backend:", BASE_URL);
+
 
 async function registerUser() {
   const username = document.getElementById("anonymousId").value;
@@ -15,30 +17,34 @@ async function registerUser() {
     true,
     ["encrypt", "decrypt"]
   );
+// Export public key to PEM format (for sending to server) 
+const publicKeyBuffer = await window.crypto.subtle.exportKey("spki", keyPair.publicKey);
+const publicKeyBase64 = btoa(String.fromCharCode(...new Uint8Array(publicKeyBuffer)));
+const publicKeyPem = `-----BEGIN PUBLIC KEY-----\n${publicKeyBase64.match(/.{1,64}/g).join("\n")}\n-----END PUBLIC KEY-----`;
 
-  // Export public key to PEM format (for sending to server)
-  const publicKeyBuffer = await window.crypto.subtle.exportKey("spki", keyPair.publicKey);
-  const publicKeyBase64 = btoa(String.fromCharCode(...new Uint8Array(publicKeyBuffer)));
-  const publicKeyPem = `-----BEGIN PUBLIC KEY-----\n${publicKeyBase64.match(/.{1,64}/g).join("\n")}\n-----END PUBLIC KEY-----`;
+console.log("✅ Public Key PEM:\n", publicKeyPem); // <--- ✅ Add this line here
 
-  // Export private key to PEM and store in sessionStorage
-  const privateKeyBuffer = await window.crypto.subtle.exportKey("pkcs8", keyPair.privateKey);
-  const privateKeyBase64 = btoa(String.fromCharCode(...new Uint8Array(privateKeyBuffer)));
-  const privateKeyPem = `-----BEGIN PRIVATE KEY-----\n${privateKeyBase64.match(/.{1,64}/g).join("\n")}\n-----END PRIVATE KEY-----`;
+console.log("Registering user:", { username, pin, publicKeyPem });
 
-  sessionStorage.setItem("privateKey", privateKeyPem); // Store locally
-  sessionStorage.setItem("username", username);
+// Export private key to PEM and store in sessionStorage
+const privateKeyBuffer = await window.crypto.subtle.exportKey("pkcs8", keyPair.privateKey);
+const privateKeyBase64 = btoa(String.fromCharCode(...new Uint8Array(privateKeyBuffer)));
+const privateKeyPem = `-----BEGIN PRIVATE KEY-----\n${privateKeyBase64.match(/.{1,64}/g).join("\n")}\n-----END PRIVATE KEY-----`;
 
-  // Send to backend with publicKey
-  fetch(`${BASE_URL}/register`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      username,
-      pin,
-      public_key: publicKeyPem
-    })
+sessionStorage.setItem("privateKey", privateKeyPem); // Store locally
+sessionStorage.setItem("username", username);
+
+// Send public key to backend
+fetch(`${BASE_URL}/register`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    username,
+    pin,
+    publicKey: publicKeyPem
   })
+})
+
     .then(res => res.json())
     .then(data => {
       if (data.success) {
