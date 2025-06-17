@@ -1,23 +1,28 @@
+# Python cache
 __pycache__/
-.env
-venv/
-venv_test/
 *.pyc
 *.pyo
+
+# Logs and temporary files
 *.log
-.DS_Store
 *.sqlite3
+
+# Environment variables
+.env
+
+# VS Code settings
+.vscode/
+
+# Virtual environments
+venv/
+venv_test/
+backend/venv/
+frontend/venv/
+
+# Node.js (if used in frontend)
 node_modules/
 dist/
 build/
 
-
-# Ignore virtual environments
-venv/
-backend/venv/
-frontend/venv/
-venv/
-__pycache__/
-*.pyc
-.vscode/
-.env
+# macOS files
+.DS_Store
