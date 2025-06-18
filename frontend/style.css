@@ -1,131 +1,121 @@
 body {
-    font-family: Arial, sans-serif;
-    background-color: #f0f2f5;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    min-height: 100vh;
-    margin: 0;
-    color: #333;
+  margin: 0;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: #0d1117; /* Dark background */
+  color: #c9d1d9; /* Light text */
 }
 
-.chat-container {
-    background-color: #fff;
-    padding: 30px;
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-    width: 100%;
-    max-width: 500px;
-    text-align: center;
-    box-sizing: border-box; /* Include padding in element's total width and height */
+.container, .chat-container {
+  max-width: 500px;
+  margin: 60px auto;
+  padding: 30px;
+  background: #161b22; /* Darker container background */
+  border-radius: 16px;
+  box-shadow: 0 0 20px rgba(0, 170, 255, 0.4); /* Blue glow */
 }
 
-h2, h3 { /* Applied to h2 and h3 for consistency */
-    color: #333;
-    margin-bottom: 20px;
+h1, h2, h3 {
+  color: #58a6ff; /* Accent blue for headings */
+  text-align: center;
 }
 
-label {
-    display: block;
-    margin-bottom: 5px;
-    font-weight: bold;
-    text-align: left;
+input, button {
+  width: 100%;
+  padding: 12px;
+  margin: 10px 0;
+  border-radius: 10px;
+  border: none;
+  font-size: 16px;
+  box-sizing: border-box; /* Ensures padding doesn't push elements out of their width */
 }
 
-input[type="text"],
-input[type="password"] {
-    width: calc(100% - 20px); /* Adjust width for padding */
-    padding: 10px;
-    margin-bottom: 15px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    font-size: 16px;
-    box-sizing: border-box;
+input {
+  background-color: #0d1117; /* Even darker input background */
+  color: #c9d1d9;
+  border: 1px solid #30363d; /* Darker border */
 }
 
 button {
-    background-color: #007bff;
-    color: white;
-    padding: 10px 20px;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 16px;
-    margin: 5px;
-    transition: background-color 0.3s ease;
+  background: #238636; /* GitHub-like green for buttons */
+  color: white;
+  font-weight: bold;
+  transition: background 0.3s ease;
 }
 
 button:hover {
-    background-color: #0056b3;
+  background: #2ea043; /* Lighter green on hover */
 }
 
 p#authMessage, p#searchMessage {
     margin-top: 15px;
     font-weight: bold;
+    color: #c9d1d9; /* Ensures visibility on dark background */
 }
 
 /* Chat Box Specific Styles */
-.chat-messages-container {
-    border: 1px solid #e0e0e0;
-    border-radius: 4px;
-    height: 300px; /* Fixed height for chat history */
-    overflow-y: scroll; /* Enable scrolling */
-    padding: 10px;
-    margin-bottom: 15px;
-    background-color: #f9f9f9;
-    text-align: left;
-    display: flex;
-    flex-direction: column; /* Stack messages vertically */
+#chatBox { /* Renamed from .chat-messages-container to match your existing ID */
+  background-color: #0d1117; /* Dark background for chat area */
+  border: 1px solid #30363d; /* Dark border */
+  padding: 10px;
+  height: 300px; /* Fixed height for chat history */
+  overflow-y: scroll; /* Enable scrolling */
+  margin-bottom: 15px;
+  border-radius: 10px;
+  text-align: left;
+  display: flex;
+  flex-direction: column; /* Stack messages vertically */
 }
 
 .chat-message {
-    padding: 8px 12px;
-    border-radius: 15px;
-    margin-bottom: 8px;
-    max-width: 80%;
-    word-wrap: break-word;
-    font-size: 14px;
+  padding: 8px 12px;
+  border-radius: 6px; /* Slightly less rounded than default for modern feel */
+  margin-bottom: 8px;
+  max-width: 80%;
+  word-wrap: break-word;
+  font-size: 14px;
 }
 
 .chat-message.sent {
-    background-color: #dcf8c6; /* Light green for sent messages */
-    align-self: flex-end; /* Align to the right */
-    border-bottom-right-radius: 2px; /* Point to sender */
+  background-color: #238636; /* Green for sent messages */
+  align-self: flex-end; /* Align to the right */
+  color: white;
 }
 
 .chat-message.received {
-    background-color: #ffffff; /* White for received messages */
-    border: 1px solid #e0e0e0;
-    align-self: flex-start; /* Align to the left */
-    border-bottom-left-radius: 2px; /* Point to receiver */
+  background-color: #21262d; /* Slightly lighter dark for received messages */
+  border: 1px solid #30363d;
+  align-self: flex-start; /* Align to the left */
+  color: #c9d1d9;
 }
 
 .chat-message.info {
-    background-color: #e6f7ff; /* Light blue for info messages */
-    color: #0056b3;
-    text-align: center;
-    align-self: center; /* Center info messages */
-    width: 100%;
-    font-style: italic;
-    font-size: 13px;
+  background-color: #1e3a8a; /* A darker blue for info messages */
+  color: #90cdf4; /* Lighter blue for info text */
+  text-align: center;
+  align-self: center; /* Center info messages */
+  width: 100%;
+  font-style: italic;
+  font-size: 13px;
+  border: 1px solid #2563eb;
 }
 
 .chat-message.error {
-    background-color: #ffe6e6; /* Light red for error messages */
-    color: #cc0000;
-    text-align: center;
-    align-self: center;
-    width: 100%;
-    font-weight: bold;
+  background-color: #990000; /* Darker red for error messages */
+  color: #ffcccc; /* Lighter red for error text */
+  text-align: center;
+  align-self: center;
+  width: 100%;
+  font-weight: bold;
+  border: 1px solid #dc2626;
 }
 
-/* ✅ Feature: Friends List Styling */
+/* --- Friends List Styling (Integrated into your theme) --- */
 .friends-list-container {
-    border: 1px solid #e0e0e0;
-    border-radius: 4px;
+    border: 1px solid #30363d; /* Dark border */
+    border-radius: 10px; /* Consistent border radius */
     padding: 10px;
     margin-bottom: 20px;
-    background-color: #f9f9f9;
+    background-color: #0d1117; /* Dark background */
     text-align: left;
     min-height: 50px; /* Give it some height even if empty */
 }
@@ -137,37 +127,48 @@ p#authMessage, p#searchMessage {
 }
 
 .friends-list-container li.friend-item {
-    padding: 8px 12px;
-    background-color: #e2f0ff; /* Light blue background for friend items */
-    border-radius: 6px;
-    margin-bottom: 5px;
+    padding: 10px 12px; /* Slightly more padding */
+    background-color: #21262d; /* Similar to received messages for consistency */
+    border-radius: 8px; /* Slightly rounded corners */
+    margin-bottom: 8px; /* Spacing between items */
     cursor: pointer;
-    transition: background-color 0.2s ease;
+    transition: background-color 0.2s ease, border-left 0.2s ease; /* Smooth transitions */
     display: flex;
     justify-content: space-between;
     align-items: center;
+    color: #c9d1d9; /* Default text color */
+    border: 1px solid transparent; /* Placeholder for border to prevent jump on hover/status */
 }
 
 .friends-list-container li.friend-item:hover {
-    background-color: #cce7ff;
+    background-color: #30363d; /* Lighter dark on hover */
+    border: 1px solid #58a6ff; /* Blue border on hover */
 }
 
 .friends-list-container li.friend-item.online {
     border-left: 5px solid #28a745; /* Green bar for online */
     font-weight: bold;
+    color: #28a745; /* Green text for online status */
 }
 
 .friends-list-container li.friend-item.offline {
     border-left: 5px solid #6c757d; /* Gray bar for offline */
-    color: #6c757d;
+    color: #6c757d; /* Gray text for offline status */
+}
+
+#noFriendsMessage {
+    color: #8b949e; /* Slightly lighter gray for info text */
+    font-style: italic;
+    text-align: center;
+    padding: 10px;
 }
 
 
 /* Responsive adjustments */
 @media (max-width: 600px) {
-    .chat-container {
+    .container, .chat-container {
         width: 95%;
-        margin: 10px;
+        margin: 10px auto;
         padding: 20px;
     }
     input[type="text"],
