@@ -32,8 +32,10 @@ function displayChatMessage(message, type = 'info') {
 
 // AES Encryption Utility (client-side implementation using Web Crypto API)
 class AesEncryption {
-  static async encrypt(message, key) {
-    const keyBytes = new TextEncoder().encode(key);
+  static async encrypt(message, keyBase64) { // Expects Base64 key string
+    // Decode Base64 key string back to Uint8Array
+    const keyBytes = Uint8Array.from(atob(keyBase64), c => c.charCodeAt(0));
+
     if (![16, 24, 32].includes(keyBytes.byteLength)) {
       throw new Error("AES key must be 16, 24, or 32 bytes (128, 192, or 256 bits).");
     }
@@ -43,7 +45,7 @@ class AesEncryption {
 
     const importedKey = await window.crypto.subtle.importKey(
       "raw",
-      keyBytes,
+      keyBytes, // Use the decoded key bytes here
       { name: "AES-CBC" },
       false,
       ["encrypt"]
@@ -62,8 +64,10 @@ class AesEncryption {
     return btoa(String.fromCharCode(...combined));
   }
 
-  static async decrypt(encryptedBase64, key) {
-    const keyBytes = new TextEncoder().encode(key);
+  static async decrypt(encryptedBase64, keyBase64) { // Expects Base64 key string
+    // Decode Base64 key string back to Uint8Array
+    const keyBytes = Uint8Array.from(atob(keyBase64), c => c.charCodeAt(0));
+
     if (![16, 24, 32].includes(keyBytes.byteLength)) {
       throw new Error("AES key must be 16, 24, or 32 bytes (128, 192, or 256 bits).");
     }
@@ -76,7 +80,7 @@ class AesEncryption {
 
     const importedKey = await window.crypto.subtle.importKey(
       "raw",
-      keyBytes,
+      keyBytes, // Use the decoded key bytes here
       { name: "AES-CBC" },
       false,
       ["decrypt"]
@@ -95,11 +99,12 @@ class AesEncryption {
     const key = await window.crypto.subtle.generateKey(
       {
         name: "AES-CBC",
-        length: 256,
+        length: 256, // 256 bits = 32 bytes
       },
       true, // extractable
       ["encrypt", "decrypt"]
     );
+    // Export it as raw bytes and then base64 encode for easy string transmission
     const exportedKey = await window.crypto.subtle.exportKey("raw", key);
     return btoa(String.fromCharCode(...new Uint8Array(exportedKey)));
   }
@@ -306,7 +311,7 @@ socket.on("receive_message", async (data) => {
     displayChatMessage(`${senderUsername}: ${decryptedMessage}`, senderUsername === username ? 'sent' : 'received');
   } catch (e) {
     console.error("❌ Decryption failed", e);
-    displayChatMessage(`${data.username}: 🔒 (Unable to decrypt message)`, 'error');
+    displayChatMessage(`${data.username}: � (Unable to decrypt message)`, 'error');
   }
 });
 
@@ -330,7 +335,6 @@ function searchUser() {
   fetch(`${BASE_URL}/search_user?query=${encodeURIComponent(searchUsername)}`)
     .then(res => res.json())
     .then(data => {
-      // ✅ FIX: Changed from data.users to data.user and checked for its existence
       if (data.success && data.user) {
         if (data.user.is_online) {
           socket.emit("send_chat_request", {
@@ -343,13 +347,12 @@ function searchUser() {
           searchMessage.textContent = `❌ ${data.user.username} is registered but currently offline.`;
         }
       } else {
-        // ✅ FIX: Improved message display when user not found or no user data
         searchMessage.textContent = data.message || "❌ User not found.";
       }
     })
     .catch(error => {
       console.error("Error searching user:", error);
-      searchMessage.textContent = "Error searching user. Check console for details."; // More generic error message
+      searchMessage.textContent = "Error searching user. Check console for details.";
     });
 }
 
@@ -418,3 +421,4 @@ async function sendMessage() {
     displayChatMessage("❌ Failed to send message: " + error.message, 'error');
   }
 }
+�
