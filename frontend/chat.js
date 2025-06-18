@@ -253,6 +253,9 @@ async function startDirectChat(friendUsername) {
         chatBox.innerHTML = ''; // Clear chat history for new chat
     }
 
+    // Set keyExchangeInitiated to true immediately when initiating a chat
+    keyExchangeInitiated = true; // Set flag early
+
     const friendDataResponse = await fetch(`${BASE_URL}/search_user?query=${encodeURIComponent(friendUsername)}`);
     const friendData = await friendDataResponse.json();
 
@@ -264,6 +267,7 @@ async function startDirectChat(friendUsername) {
         await generateAndSendAesKey(chattingWith); // Initiate key exchange (requester role)
     } else {
         displayChatMessage(`❌ ${friendUsername} is currently offline. Cannot start direct chat.`, 'error');
+        keyExchangeInitiated = false; // Reset if offline
     }
 }
 
@@ -324,6 +328,8 @@ socket.on("chat_request", (data) => {
         currentChatKey = null;
         chatBox.innerHTML = ''; // Clear chat history for new chat
     }
+    // Set keyExchangeInitiated to true immediately for incoming chat acceptance
+    keyExchangeInitiated = true; // Set flag early
     currentRoom = roomName;
     chattingWith = fromUser;
     socket.emit("join", { room: roomName, username });
@@ -341,6 +347,8 @@ socket.on("chat_request_approved", async (data) => {
         currentChatKey = null;
         chatBox.innerHTML = ''; // Clear chat history for new chat
     }
+    // Set keyExchangeInitiated to true immediately when chat is approved
+    keyExchangeInitiated = true; // Set flag early
     currentRoom = roomName;
     chattingWith = data.by_user;
     socket.emit("join", { room: roomName, username });
@@ -526,14 +534,14 @@ function searchUser() {
 }
 
 async function generateAndSendAesKey(recipientUsername) {
-  // Prevent multiple calls if key exchange is already initiated for this chat
-  // or if a current chat key already exists for the current conversation partner.
-  if (keyExchangeInitiated || currentChatKey && chattingWith === recipientUsername) {
+  // If keyExchangeInitiated is true and we already have a key for this partner, skip.
+  // This helps prevent re-generating keys if the flag was set by an earlier, successful initiation.
+  if (keyExchangeInitiated && currentChatKey && chattingWith === recipientUsername) {
     console.log("🔑 Key exchange or key already established for this chat. Skipping redundant call.");
     return;
   }
 
-  keyExchangeInitiated = true; // Set flag to true as soon as we start
+  // keyExchangeInitiated = true; // This is now set earlier in startDirectChat/chat_request_approved
 
   console.log("🔑 Generating and sending AES key to:", recipientUsername);
   try {
