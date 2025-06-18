@@ -118,9 +118,12 @@ def register():
         users_collection.insert_one({
             "username": username,
             "pin": hashed_pin,
-            "public_key": public_key,
+            "public_key": public_key, # This is the public key being saved
             "friends": [] # Feature: Initialize empty friends list
         })
+        # ✅ New Logging: Print the public key saved to MongoDB
+        print(f"✅ Registered {username}. Saved Public Key (first 50 chars): {public_key[:50]}...")
+
 
         return jsonify({"success": True, "message": "User registered successfully"}), 201
 
