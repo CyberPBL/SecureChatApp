@@ -20,7 +20,7 @@ body {
     box-sizing: border-box; /* Include padding in element's total width and height */
 }
 
-h2 {
+h2, h3 { /* Applied to h2 and h3 for consistency */
     color: #333;
     margin-bottom: 20px;
 }
@@ -119,6 +119,50 @@ p#authMessage, p#searchMessage {
     font-weight: bold;
 }
 
+/* ✅ Feature: Friends List Styling */
+.friends-list-container {
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    padding: 10px;
+    margin-bottom: 20px;
+    background-color: #f9f9f9;
+    text-align: left;
+    min-height: 50px; /* Give it some height even if empty */
+}
+
+.friends-list-container ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.friends-list-container li.friend-item {
+    padding: 8px 12px;
+    background-color: #e2f0ff; /* Light blue background for friend items */
+    border-radius: 6px;
+    margin-bottom: 5px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.friends-list-container li.friend-item:hover {
+    background-color: #cce7ff;
+}
+
+.friends-list-container li.friend-item.online {
+    border-left: 5px solid #28a745; /* Green bar for online */
+    font-weight: bold;
+}
+
+.friends-list-container li.friend-item.offline {
+    border-left: 5px solid #6c757d; /* Gray bar for offline */
+    color: #6c757d;
+}
+
+
 /* Responsive adjustments */
 @media (max-width: 600px) {
     .chat-container {
@@ -130,68 +174,4 @@ p#authMessage, p#searchMessage {
     input[type="password"] {
         width: 100%;
     }
-}
-body {
-  margin: 0;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  background-color: #0d1117;
-  color: #c9d1d9;
-}
-
-.container, .chat-container {
-  max-width: 500px;
-  margin: 60px auto;
-  padding: 30px;
-  background: #161b22;
-  border-radius: 16px;
-  box-shadow: 0 0 20px rgba(0, 170, 255, 0.4);
-}
-
-h1, h2, h3 {
-  color: #58a6ff;
-  text-align: center;
-}
-
-input, button {
-  width: 100%;
-  padding: 12px;
-  margin: 10px 0;
-  border-radius: 10px;
-  border: none;
-  font-size: 16px;
-}
-
-input {
-  background-color: #0d1117;
-  color: #c9d1d9;
-  border: 1px solid #30363d;
-}
-
-button {
-  background: #238636;
-  color: white;
-  font-weight: bold;
-  transition: background 0.3s ease;
-}
-
-button:hover {
-  background: #2ea043;
-}
-
-#chatBox {
-  background-color: #0d1117;
-  border: 1px solid #30363d;
-  padding: 10px;
-  height: 200px;
-  overflow-y: auto;
-  margin-bottom: 10px;
-  border-radius: 10px;
-}
-
-#chatBox div {
-  margin-bottom: 10px;
-  padding: 8px;
-  border-radius: 6px;
-  background: #21262d;
-  color: #f0f6fc;
 }
