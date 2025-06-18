@@ -1,6 +1,6 @@
 // chat.js
 
-const BASE_URL = "https://securechat-frontend-9qs2.onrender.com"; // Ensure this matches your backend URL
+const BASE_URL = "https://securechatapp-ys8y.onrender.com"; // CORRECTED: This must point to your backend URL
 const socket = io(BASE_URL);
 
 // --- Global Chat Variables ---
