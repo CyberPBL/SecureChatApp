@@ -1,6 +1,8 @@
 import eventlet
 eventlet.monkey_patch()
 
+print("Running app.py")
+
 import os
 import base64
 import datetime
@@ -38,9 +40,8 @@ db = client["securechat_db"]
 users_collection = db["users"]
 messages_collection = db["messages"] # Collection to store chat history
 
-# ✅ Feature: TTL Index for Messages
+# Feature: TTL Index for Messages
 # Messages will be automatically deleted 24 hours (86400 seconds) after their 'timestamp'.
-# This command is idempotent, meaning it can be run multiple times safely.
 try:
     messages_collection.create_index(
         "timestamp",
@@ -70,7 +71,7 @@ socketio = SocketIO(app, cors_allowed_origins=[
     "https://securechat-frontend-9qs2.onrender.com"
 ])
 
-# --- Flask Routes ---
+# --- Flask Routes (these are handled by Gunicorn workers, not directly by SocketIO's event loop, so no change needed here) ---
 
 @app.route('/search_user')
 def search_user():
@@ -118,7 +119,7 @@ def register():
             "username": username,
             "pin": hashed_pin,
             "public_key": public_key,
-            "friends": [] # ✅ Feature: Initialize empty friends list
+            "friends": [] # Feature: Initialize empty friends list
         })
 
         return jsonify({"success": True, "message": "User registered successfully"}), 201
@@ -159,44 +160,43 @@ def login():
 def handle_connect():
     print(f"🔗 Client connected: {request.sid}")
 
+# Background task for register_user to avoid blocking
+def _register_user_background(username, sid):
+    username = username.strip() # Ensure username is stripped for DB consistency
+    if users_collection.find_one({"username": username}):
+        users_collection.update_one(
+            {"username": username},
+            {"$set": {"socket_id": sid}}
+        )
+        print(f"🔵 User registered: {username} with SID: {sid}")
+        socketio.emit('registered', {'message': f'User {username} registered successfully.'}, room=sid)
+    else:
+        socketio.emit('error', {'message': f'User {username} not found in database for socket registration. Please register via the login page first.'}, room=sid)
+
 @socketio.on('register_user')
 def handle_register_user(data):
     username = data.get('username')
-    if username:
-        username = username.strip()
     sid = request.sid
-
     if username:
-        if users_collection.find_one({"username": username}):
-            users_collection.update_one(
-                {"username": username},
-                {"$set": {"socket_id": sid}}
-            )
-            print(f"🔵 User registered: {username} with SID: {sid}")
-            emit('registered', {'message': f'User {username} registered successfully.'}, room=sid)
-        else:
-            emit('error', {'message': f'User {username} not found in database for socket registration.'}, room=sid)
+        socketio.start_background_task(_register_user_background, username, sid)
     else:
         emit('error', {'message': 'Username missing in registration.'}, room=sid)
 
-@socketio.on('get_online_users')
-def handle_get_online_users():
+# Background task for get_online_users
+def _get_online_users_background(sid):
     online_users_cursor = users_collection.find({"socket_id": {"$exists": True, "$ne": None, "$ne": ""}}, {"username": 1, "_id": 0})
     online_users = [user['username'] for user in online_users_cursor]
     print(f"👥 Online users requested. Currently online: {online_users}")
-    emit('online_users', {'users': online_users}, room=request.sid)
+    socketio.emit('online_users', {'users': online_users}, room=sid)
 
-# ✅ Feature: Get Friends List
-@socketio.on('get_friends')
-def handle_get_friends(data):
-    username = data.get('username')
-    if not username:
-        emit('error', {'message': 'Username missing for get_friends.'}, room=request.sid)
-        return
+@socketio.on('get_online_users')
+def handle_get_online_users():
+    socketio.start_background_task(_get_online_users_background, request.sid)
 
+# Background task for get_friends
+def _get_friends_background(username, sid):
     user = users_collection.find_one({"username": username}, {"_id": 0, "friends": 1})
     if user and "friends" in user:
-        # Fetch status for friends if online
         friends_with_status = []
         for friend_username in user['friends']:
             friend_data = users_collection.find_one({"username": friend_username}, {"_id": 0, "socket_id": 1})
@@ -204,130 +204,150 @@ def handle_get_friends(data):
             if friend_data and "socket_id" in friend_data and friend_data["socket_id"] is not None and friend_data["socket_id"] != "":
                 is_online = True
             friends_with_status.append({"username": friend_username, "is_online": is_online})
-        emit('friends_list', {'friends': friends_with_status}, room=request.sid)
+        socketio.emit('friends_list', {'friends': friends_with_status}, room=sid)
         print(f"👥 Friends list for {username} requested: {user['friends']}")
     else:
-        emit('friends_list', {'friends': []}, room=request.sid) # Emit empty list if no friends
+        socketio.emit('friends_list', {'friends': []}, room=sid)
 
+@socketio.on('get_friends')
+def handle_get_friends(data):
+    username = data.get('username')
+    if username:
+        socketio.start_background_task(_get_friends_background, username, request.sid)
+    else:
+        emit('error', {'message': 'Username missing for get_friends.'}, room=request.sid)
+
+# Background task for send_chat_request
+def _send_chat_request_background(from_user, to_user, sender_sid):
+    target_user = users_collection.find_one({"username": to_user})
+    if target_user and "socket_id" in target_user and target_user["socket_id"] is not None and target_user["socket_id"] != "":
+        target_sid = target_user["socket_id"]
+        socketio.emit('chat_request', {'from_user': from_user}, room=target_sid)
+        print(f"📨 Chat request sent from {from_user} to {to_user} (SID: {target_sid})")
+    else:
+        socketio.emit('error', {'message': f'User {to_user} not online or does not exist.'}, room=sender_sid)
+        print(f"❌ Failed to send chat request: {to_user} not online or does not exist.")
 
 @socketio.on('send_chat_request')
 def handle_send_chat_request(data):
     from_user = data.get('from_user')
     to_user = data.get('to_user')
-
     if not from_user or not to_user:
         emit('error', {'message': 'Missing sender or receiver in chat request.'}, room=request.sid)
         return
+    socketio.start_background_task(_send_chat_request_background, from_user, to_user, request.sid)
 
-    target_user = users_collection.find_one({"username": to_user})
+# Background task for approve_chat_request
+def _approve_chat_request_background(from_user, to_user, approved, approver_sid):
+    if approved:
+        users_collection.update_one(
+            {"username": from_user},
+            {"$addToSet": {"friends": to_user}}
+        )
+        users_collection.update_one(
+            {"username": to_user},
+            {"$addToSet": {"friends": from_user}}
+        )
+        print(f"✅ Added {to_user} to {from_user}'s friends and vice-versa.")
 
-    if target_user and "socket_id" in target_user and target_user["socket_id"] is not None and target_user["socket_id"] != "":
-        target_sid = target_user["socket_id"]
-        emit('chat_request', {'from_user': from_user}, room=target_sid)
-        print(f"📨 Chat request sent from {from_user} to {to_user} (SID: {target_sid})")
+    requester_user = users_collection.find_one({"username": from_user})
+
+    if requester_user and "socket_id" in requester_user and requester_user["socket_id"] is not None and requester_user["socket_id"] != "":
+        requester_sid = requester_user["socket_id"]
+        socketio.emit('chat_request_approved', {'by_user': to_user, 'approved': approved}, room=requester_sid)
+        print(f"✅ Chat request from {from_user} approved by {to_user}: {approved}")
+        # Also, re-emit friends list to both users if approval happened
+        socketio.start_background_task(_get_friends_background, from_user, requester_sid)
+        socketio.start_background_task(_get_friends_background, to_user, approver_sid)
     else:
-        emit('error', {'message': f'User {to_user} not online or does not exist.'}, room=request.sid)
-        print(f"❌ Failed to send chat request: {to_user} not online or does not exist.")
+        socketio.emit('error', {'message': f'User {from_user} not online or does not exist.'}, room=approver_sid)
+        print(f"❌ Failed to approve chat request: {from_user} not online or does not exist.")
 
 @socketio.on('approve_chat_request')
 def handle_approve_chat_request(data):
     from_user = data.get('from_user')
     to_user = data.get('to_user')
     approved = data.get('approved')
-
     if not from_user or not to_user or approved is None:
         emit('error', {'message': 'Missing required fields in approval request.'}, room=request.sid)
         return
+    socketio.start_background_task(_approve_chat_request_background, from_user, to_user, approved, request.sid)
 
-    requester_user = users_collection.find_one({"username": from_user})
-
-    if approved:
-        # ✅ Feature: Add to friends list for both users if approved
-        users_collection.update_one(
-            {"username": from_user},
-            {"$addToSet": {"friends": to_user}} # Add to_user to from_user's friends
-        )
-        users_collection.update_one(
-            {"username": to_user},
-            {"$addToSet": {"friends": from_user}} # Add from_user to to_user's friends
-        )
-        print(f"✅ Added {to_user} to {from_user}'s friends and vice-versa.")
-
-    if requester_user and "socket_id" in requester_user and requester_user["socket_id"] is not None and requester_user["socket_id"] != "":
-        requester_sid = requester_user["socket_id"]
-        emit('chat_request_approved', {'by_user': to_user, 'approved': approved}, room=requester_sid)
-        print(f"✅ Chat request from {from_user} approved by {to_user}: {approved}")
+# Background task for send_aes_key_encrypted
+def _send_aes_key_encrypted_background(from_user, to_user, encrypted_aes_key, sender_sid):
+    target_user = users_collection.find_one({"username": to_user})
+    if target_user and "socket_id" in target_user and target_user["socket_id"] is not None and target_user["socket_id"] != "":
+        target_sid = target_user["socket_id"]
+        socketio.emit('receive_aes_key_encrypted', {
+            'from_user': from_user,
+            'encrypted_aes_key': encrypted_aes_key
+        }, room=target_sid)
+        print(f"🔑 Encrypted AES key sent from {from_user} to {to_user}.")
     else:
-        emit('error', {'message': f'User {from_user} not online or does not exist.'}, room=request.sid)
-        print(f"❌ Failed to approve chat request: {from_user} not online or does not exist.")
+        socketio.emit('error', {'message': f'User {to_user} not online to receive AES key.'}, room=sender_sid)
 
 @socketio.on('send_aes_key_encrypted')
 def handle_send_aes_key_encrypted(data):
     from_user = data.get('from_user')
     to_user = data.get('to_user')
     encrypted_aes_key = data.get('encrypted_aes_key')
-
     if not from_user or not to_user or not encrypted_aes_key:
         emit('error', {'message': 'Missing data for encrypted AES key transfer.'}, room=request.sid)
         return
+    socketio.start_background_task(_send_aes_key_encrypted_background, from_user, to_user, encrypted_aes_key, request.sid)
 
-    target_user = users_collection.find_one({"username": to_user})
-    if target_user and "socket_id" in target_user and target_user["socket_id"] is not None and target_user["socket_id"] != "":
-        target_sid = target_user["socket_id"]
-        emit('receive_aes_key_encrypted', {
-            'from_user': from_user,
-            'encrypted_aes_key': encrypted_aes_key
-        }, room=target_sid)
-        print(f"🔑 Encrypted AES key sent from {from_user} to {to_user}.")
-    else:
-        emit('error', {'message': f'User {to_user} not online to receive AES key.'}, room=request.sid)
+# Background task for join and chat history
+def _join_background(room, username, sid):
+    join_room(room) # join_room is usually safe as it's a SocketIO-internal operation
+    print(f"{username} joined room {room}")
+    chat_partner = room.replace(username + '_', '').replace('_' + username, '')
+    socketio.emit('chat_approved', {'with': chat_partner, 'room': room}, room=sid)
+
+    history = list(messages_collection.find({"room": room}).sort("timestamp", 1))
+    socketio.emit('chat_history', {'history': history}, room=sid)
+    print(f"📜 Chat history for room {room} sent to {username}.")
 
 @socketio.on('join')
 def handle_join(data):
     room = data.get('room')
     username = data.get('username')
     if room and username:
-        join_room(room)
-        print(f"{username} joined room {room}")
-        chat_partner = room.replace(username + '_', '').replace('_' + username, '')
-        emit('chat_approved', {'with': chat_partner, 'room': room}, room=request.sid)
-
-        history = list(messages_collection.find({"room": room}).sort("timestamp", 1))
-        emit('chat_history', {'history': history}, room=request.sid)
-        print(f"📜 Chat history for room {room} sent to {username}.")
+        socketio.start_background_task(_join_background, room, username, request.sid)
     else:
         emit('error', {'message': 'Missing room or username in join.'}, room=request.sid)
 
-@socketio.on('send_message')
-def handle_send_message(data):
-    from_user = data.get('from_user')
-    to_user = data.get('to_user')
-    message = data.get('message') # This should be the already encrypted message
-    room = data.get('room')
-
-    if not all([from_user, message, room]):
-        emit('error', {'message': 'Missing from_user, message, or room in send_message.'}, room=request.sid)
-        return
-
+# Background task for send_message
+def _send_message_background(from_user, to_user, message, room, sender_sid):
     messages_collection.insert_one({
         "from_user": from_user,
-        "to_user": to_user, # For history tracking
-        "message": message, # Store the encrypted message
+        "to_user": to_user,
+        "message": message,
         "room": room,
-        "timestamp": datetime.datetime.utcnow(), # Use UTC timestamp for TTL
-        "last_seen": None # ✅ Feature: Add last_seen for potential future "seen by recipient" deletion
+        "timestamp": datetime.datetime.utcnow(),
+        "last_seen": None
     })
     print(f"💬 Encrypted message from {from_user} to {to_user} in room {room} stored.")
 
-    emit('receive_message', {
+    socketio.emit('receive_message', {
         'username': from_user,
         'message': message,
         'timestamp': datetime.datetime.utcnow().isoformat()
     }, room=room, include_self=True)
 
-@socketio.on('disconnect')
-def handle_disconnect():
-    sid = request.sid
+@socketio.on('send_message')
+def handle_send_message(data):
+    from_user = data.get('from_user')
+    to_user = data.get('to_user')
+    message = data.get('message')
+    room = data.get('room')
+
+    if not all([from_user, message, room]):
+        emit('error', {'message': 'Missing from_user, message, or room in send_message.'}, room=request.sid)
+        return
+    socketio.start_background_task(_send_message_background, from_user, to_user, message, room, request.sid)
+
+# Background task for disconnect
+def _disconnect_background(sid):
     result = users_collection.update_one(
         {"socket_id": sid},
         {"$unset": {"socket_id": ""}}
@@ -336,6 +356,10 @@ def handle_disconnect():
         print(f"❌ User associated with socket {sid} disconnected (socket_id removed from DB).")
     else:
         print(f"❌ Socket disconnected: {sid} (no associated user found or socket_id already removed).")
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    socketio.start_background_task(_disconnect_background, request.sid)
 
 # --- After Request Hook for CORS Headers ---
 @app.after_request
