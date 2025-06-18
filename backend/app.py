@@ -21,6 +21,8 @@ from encryption import AesEncryption, RSAEncryption # Consolidated encryption lo
 load_dotenv()
 MONGO_URI = os.getenv("MONGO_URI")
 DEBUG_MODE = os.getenv("DEBUG", "False").lower() == "true"
+# ✅ IMPORTANT: Get port from environment variable, default to 8000 for local development
+PORT = int(os.environ.get("PORT", 8000))
 
 # Ensure MONGO_URI is set
 if not MONGO_URI:
@@ -251,8 +253,6 @@ def handle_join(data):
 
         # Load chat history for the joined room
         history = list(messages_collection.find({"room": room}).sort("timestamp", 1))
-        # Important: only send messages relevant to the current user (if to_user is sender or receiver)
-        # For simplicity, sending all messages in room. Frontend should filter/decrypt.
         emit('chat_history', {'history': history}, room=request.sid)
         print(f"📜 Chat history for room {room} sent to {username}.")
     else:
@@ -296,10 +296,6 @@ def handle_disconnect():
         {"$unset": {"socket_id": ""}} # Unset (remove) the socket_id field
     )
     if result.modified_count > 0:
-        # Attempt to get username for logging if the update was successful
-        # Note: Finding by {"socket_id": {"$exists": False}} and _id is tricky after $unset.
-        # A better approach would be to fetch the user BEFORE the unset if you need the username for logging.
-        # For now, keeping original logic, but be aware it might not always get the exact user after unset.
         print(f"❌ User associated with socket {sid} disconnected (socket_id removed from DB).")
     else:
         print(f"❌ Socket disconnected: {sid} (no associated user found or socket_id already removed).")
@@ -316,5 +312,6 @@ def apply_cors(response):
 
 # --- Run the application ---
 if __name__ == '__main__':
-    socketio.run(app, host='0.0.0.0', port=8000, debug=DEBUG_MODE, allow_unsafe_werkzeug=True)
+    # ✅ IMPORTANT: Listen on the PORT provided by the environment, typically for deployment
+    socketio.run(app, host='0.0.0.0', port=PORT, debug=DEBUG_MODE, allow_unsafe_werkzeug=True)
 
