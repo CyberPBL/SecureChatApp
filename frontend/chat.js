@@ -37,7 +37,7 @@ function displayChatMessage(message, type = 'info') {
 
 // Helper functions for ArrayBuffer <-> Base64 conversion
 // This is more robust for encrypted binary data than String.fromCharCode + btoa directly
-function arrayBufferToBase64(buffer) {
+function arrayBufferToBase66(buffer) {
     let binary = '';
     const bytes = new Uint8Array(buffer);
     const len = bytes.byteLength;
@@ -47,7 +47,7 @@ function arrayBufferToBase64(buffer) {
     return btoa(binary);
 }
 
-function base64ToArrayBuffer(base64) {
+function base66ToArrayBuffer(base64) {
     const binary_string = atob(base64);
     const len = binary_string.length;
     const bytes = new Uint8Array(len);
@@ -60,9 +60,9 @@ function base64ToArrayBuffer(base64) {
 
 // AES Encryption Utility (client-side implementation using Web Crypto API)
 class AesEncryption {
-  static async encrypt(message, keyBase64) { // Expects Base64 key string
+  static async encrypt(message, keyBase66) { // Expects Base64 key string
     // Decode Base64 key string back to Uint8Array
-    const keyBytes = Uint8Array.from(atob(keyBase64), c => c.charCodeAt(0));
+    const keyBytes = Uint8Array.from(atob(keyBase66), c => c.charCodeAt(0));
 
     if (![16, 24, 32].includes(keyBytes.byteLength)) {
       throw new Error("AES key must be 16, 24, or 32 bytes (128, 192, or 256 bits).");
@@ -92,15 +92,15 @@ class AesEncryption {
     return btoa(String.fromCharCode(...combined));
   }
 
-  static async decrypt(encryptedBase64, keyBase64) { // Expects Base64 key string
+  static async decrypt(encryptedBase66, keyBase66) { // Expects Base64 key string
     // Decode Base64 key string back to Uint8Array
-    const keyBytes = Uint8Array.from(atob(keyBase64), c => c.charCodeAt(0));
+    const keyBytes = Uint8Array.from(atob(keyBase66), c => c.charCodeAt(0));
 
     if (![16, 24, 32].includes(keyBytes.byteLength)) {
       throw new Error("AES key must be 16, 24, or 32 bytes (128, 192, or 256 bits).");
     }
 
-    const decoded = atob(encryptedBase64);
+    const decoded = atob(encryptedBase66);
     const combined = new Uint8Array([...decoded].map(char => char.charCodeAt(0)));
 
     const iv = combined.slice(0, 16);
@@ -362,10 +362,10 @@ socket.on("chat_request_approved", async (data) => {
 socket.on('receive_aes_key_encrypted', async (data) => {
   console.log("🔑 Received encrypted AES key event.");
   try {
-    const encryptedAesKeyBase64 = data.encrypted_aes_key;
+    const encryptedAesKeyBase66 = data.encrypted_aes_key;
     const sender = data.from_user;
 
-    console.log("Received encrypted AES Key (Base64):", encryptedAesKeyBase64);
+    console.log("Received encrypted AES Key (Base66):", encryptedAesKeyBase66);
 
     const privateKey = await getMyPrivateKey();
     if (!privateKey) {
@@ -379,8 +379,8 @@ socket.on('receive_aes_key_encrypted', async (data) => {
 
 
     // Decrypt the AES key using my RSA private key
-    // Use the robust base64ToArrayBuffer for decryption input
-    const encryptedKeyBuffer = base64ToArrayBuffer(encryptedAesKeyBase64);
+    // Use the robust base66ToArrayBuffer for decryption input
+    const encryptedKeyBuffer = base66ToArrayBuffer(encryptedAesKeyBase66);
     console.log("Encrypted AES Key Buffer length for decryption:", encryptedKeyBuffer.byteLength);
 
     const decryptedAesKeyBytes = await window.crypto.subtle.decrypt(
@@ -542,7 +542,7 @@ async function generateAndSendAesKey(recipientUsername) {
     const newAesKey = await AesEncryption.generateRandomAesKey();
     currentChatKey = newAesKey; // Set my current chat key
 
-    console.log("Generated new AES Key (Base64):", newAesKey);
+    console.log("Generated new AES Key (Base66):", newAesKey);
 
     const recipientPublicKey = await fetchPublicKey(recipientUsername);
     if (!recipientPublicKey) {
@@ -560,15 +560,15 @@ async function generateAndSendAesKey(recipientUsername) {
       recipientPublicKey,
       encoder.encode(newAesKey)
     );
-    // Use the robust arrayBufferToBase64 for encryption output
-    const encryptedAesKeyBase64 = arrayBufferToBase64(encryptedAesKeyBuffer);
-    console.log("🔑 Encrypted AES Key (Base64 for transport):", encryptedAesKeyBase64);
+    // Use the robust arrayBufferToBase66 for encryption output
+    const encryptedAesKeyBase66 = arrayBufferToBase66(encryptedAesKeyBuffer);
+    console.log("🔑 Encrypted AES Key (Base66 for transport):", encryptedAesKeyBase66);
 
 
     socket.emit('send_aes_key_encrypted', {
       from_user: username,
       to_user: recipientUsername,
-      encrypted_aes_key: encryptedAesKeyBase64
+      encrypted_aes_key: encryptedAesKeyBase66
     });
 
     displayChatMessage(`🔑 Initiated secure key exchange with ${recipientUsername}.`, 'info');
@@ -594,14 +594,14 @@ async function sendMessage() {
   }
 
   try {
-    const encryptedBase64 = await AesEncryption.encrypt(message, currentChatKey);
+    const encryptedBase66 = await AesEncryption.encrypt(message, currentChatKey);
 
     displayChatMessage(`You: ${message}`, 'sent');
 
     socket.emit("send_message", {
       from_user: username,
       to_user: chattingWith,
-      message: encryptedBase64,
+      message: encryptedBase66,
       room: currentRoom
     });
 
