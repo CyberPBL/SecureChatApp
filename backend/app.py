@@ -1,8 +1,6 @@
 import eventlet
 eventlet.monkey_patch()
 
-print("Running app.py")
-
 import os
 import base64
 import datetime
@@ -14,16 +12,20 @@ from pymongo.server_api import ServerApi
 from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
 
+# Import the AesEncryption and RSAEncryption classes from your encryption.py
 from encryption import AesEncryption, RSAEncryption
 
+# Load environment variables from .env file
 load_dotenv()
 MONGO_URI = os.getenv("MONGO_URI")
 DEBUG_MODE = os.getenv("DEBUG", "False").lower() == "true"
 PORT = int(os.environ.get("PORT", 8000))
 
+# Ensure MONGO_URI is set
 if not MONGO_URI:
     raise Exception("❌ MONGO_URI not set in .env file")
 
+# Establish MongoDB connection
 try:
     client = MongoClient(MONGO_URI, server_api=ServerApi('1'))
     client.admin.command('ping')
@@ -31,10 +33,25 @@ try:
 except Exception as e:
     raise Exception(f"❌ MongoDB connection failed: {e}")
 
+# Select the database and collections
 db = client["securechat_db"]
 users_collection = db["users"]
-messages_collection = db["messages"]
+messages_collection = db["messages"] # Collection to store chat history
 
+# ✅ Feature: TTL Index for Messages
+# Messages will be automatically deleted 24 hours (86400 seconds) after their 'timestamp'.
+# This command is idempotent, meaning it can be run multiple times safely.
+try:
+    messages_collection.create_index(
+        "timestamp",
+        expireAfterSeconds=86400 # 24 hours * 60 minutes * 60 seconds
+    )
+    print("✅ TTL index created on messages_collection for automatic deletion.")
+except Exception as e:
+    print(f"⚠️ Could not create TTL index on messages_collection: {e}")
+
+
+# Initialize Flask app and CORS
 app = Flask(__name__)
 CORS(app, supports_credentials=True, resources={
     r"/*": {
@@ -46,6 +63,7 @@ CORS(app, supports_credentials=True, resources={
     }
 })
 
+# Initialize Flask-SocketIO
 socketio = SocketIO(app, cors_allowed_origins=[
     "http://127.0.0.1:5500",
     "http://localhost:5500",
@@ -84,7 +102,7 @@ def register():
         data = request.get_json()
         print("📥 Received data:", data)
 
-        username = data.get("username").strip() # Strip username on registration
+        username = data.get("username").strip()
         pin = data.get("pin")
         public_key = data.get("publicKey")
 
@@ -99,7 +117,8 @@ def register():
         users_collection.insert_one({
             "username": username,
             "pin": hashed_pin,
-            "public_key": public_key
+            "public_key": public_key,
+            "friends": [] # ✅ Feature: Initialize empty friends list
         })
 
         return jsonify({"success": True, "message": "User registered successfully"}), 201
@@ -122,7 +141,7 @@ def get_public_key():
 @app.route('/login', methods=['POST'])
 def login():
     data = request.json
-    username = data.get('username').strip() # Strip username on login
+    username = data.get('username').strip()
     pin = data.get('pin')
 
     if not username or not pin:
@@ -143,8 +162,8 @@ def handle_connect():
 @socketio.on('register_user')
 def handle_register_user(data):
     username = data.get('username')
-    if username: # ✅ Ensure username is not None before stripping
-        username = username.strip() # ✅ Added strip here for thoroughness
+    if username:
+        username = username.strip()
     sid = request.sid
 
     if username:
@@ -166,6 +185,30 @@ def handle_get_online_users():
     online_users = [user['username'] for user in online_users_cursor]
     print(f"👥 Online users requested. Currently online: {online_users}")
     emit('online_users', {'users': online_users}, room=request.sid)
+
+# ✅ Feature: Get Friends List
+@socketio.on('get_friends')
+def handle_get_friends(data):
+    username = data.get('username')
+    if not username:
+        emit('error', {'message': 'Username missing for get_friends.'}, room=request.sid)
+        return
+
+    user = users_collection.find_one({"username": username}, {"_id": 0, "friends": 1})
+    if user and "friends" in user:
+        # Fetch status for friends if online
+        friends_with_status = []
+        for friend_username in user['friends']:
+            friend_data = users_collection.find_one({"username": friend_username}, {"_id": 0, "socket_id": 1})
+            is_online = False
+            if friend_data and "socket_id" in friend_data and friend_data["socket_id"] is not None and friend_data["socket_id"] != "":
+                is_online = True
+            friends_with_status.append({"username": friend_username, "is_online": is_online})
+        emit('friends_list', {'friends': friends_with_status}, room=request.sid)
+        print(f"👥 Friends list for {username} requested: {user['friends']}")
+    else:
+        emit('friends_list', {'friends': []}, room=request.sid) # Emit empty list if no friends
+
 
 @socketio.on('send_chat_request')
 def handle_send_chat_request(data):
@@ -197,6 +240,18 @@ def handle_approve_chat_request(data):
         return
 
     requester_user = users_collection.find_one({"username": from_user})
+
+    if approved:
+        # ✅ Feature: Add to friends list for both users if approved
+        users_collection.update_one(
+            {"username": from_user},
+            {"$addToSet": {"friends": to_user}} # Add to_user to from_user's friends
+        )
+        users_collection.update_one(
+            {"username": to_user},
+            {"$addToSet": {"friends": from_user}} # Add from_user to to_user's friends
+        )
+        print(f"✅ Added {to_user} to {from_user}'s friends and vice-versa.")
 
     if requester_user and "socket_id" in requester_user and requester_user["socket_id"] is not None and requester_user["socket_id"] != "":
         requester_sid = requester_user["socket_id"]
@@ -247,7 +302,7 @@ def handle_join(data):
 def handle_send_message(data):
     from_user = data.get('from_user')
     to_user = data.get('to_user')
-    message = data.get('message')
+    message = data.get('message') # This should be the already encrypted message
     room = data.get('room')
 
     if not all([from_user, message, room]):
@@ -256,10 +311,11 @@ def handle_send_message(data):
 
     messages_collection.insert_one({
         "from_user": from_user,
-        "to_user": to_user,
-        "message": message,
+        "to_user": to_user, # For history tracking
+        "message": message, # Store the encrypted message
         "room": room,
-        "timestamp": datetime.datetime.utcnow()
+        "timestamp": datetime.datetime.utcnow(), # Use UTC timestamp for TTL
+        "last_seen": None # ✅ Feature: Add last_seen for potential future "seen by recipient" deletion
     })
     print(f"💬 Encrypted message from {from_user} to {to_user} in room {room} stored.")
 
@@ -281,6 +337,7 @@ def handle_disconnect():
     else:
         print(f"❌ Socket disconnected: {sid} (no associated user found or socket_id already removed).")
 
+# --- After Request Hook for CORS Headers ---
 @app.after_request
 def apply_cors(response):
     response.headers["Access-Control-Allow-Origin"] = request.headers.get("Origin")
@@ -289,6 +346,6 @@ def apply_cors(response):
     response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
     return response
 
+# --- Run the application ---
 if __name__ == '__main__':
     socketio.run(app, host='0.0.0.0', port=PORT, debug=DEBUG_MODE, allow_unsafe_werkzeug=True)
-
