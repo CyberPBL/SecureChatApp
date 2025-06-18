@@ -34,6 +34,29 @@ function displayChatMessage(message, type = 'info') {
   chatBox.scrollTop = chatBox.scrollHeight; // Auto-scroll to bottom
 }
 
+// Helper functions for ArrayBuffer <-> Base64 conversion
+// This is more robust for encrypted binary data than String.fromCharCode + btoa directly
+function arrayBufferToBase64(buffer) {
+    let binary = '';
+    const bytes = new Uint8Array(buffer);
+    const len = bytes.byteLength;
+    for (let i = 0; i < len; i++) {
+        binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
+}
+
+function base64ToArrayBuffer(base64) {
+    const binary_string = atob(base64);
+    const len = binary_string.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+        bytes[i] = binary_string.charCodeAt(i);
+    }
+    return bytes.buffer;
+}
+
+
 // AES Encryption Utility (client-side implementation using Web Crypto API)
 class AesEncryption {
   static async encrypt(message, keyBase64) { // Expects Base64 key string
@@ -116,13 +139,16 @@ class AesEncryption {
 
 async function fetchPublicKey(username) {
   try {
-    const response = await fetch(`${BASE_URL}/get_public_key?username=${encodeURIComponent(username)}`);
+    // Add cache busting to ensure we always get the latest public key
+    const response = await fetch(`${BASE_URL}/get_public_key?username=${encodeURIComponent(username)}&_=${new Date().getTime()}`);
     const data = await response.json();
     if (data.success) {
       const pem = data.public_key;
+      // Remove BEGIN/END PUBLIC KEY headers and all whitespace
       const b64 = pem.replace(/-----[^-]+-----/g, "").replace(/\s+/g, "");
       const binaryDer = atob(b64);
       const buffer = new Uint8Array([...binaryDer].map(ch => ch.charCodeAt(0))).buffer;
+      console.log(`✅ Fetched public key for ${username}: ${b64.substring(0, 50)}...`); // Log fetched key
       return await window.crypto.subtle.importKey(
         "spki",
         buffer,
@@ -132,6 +158,7 @@ async function fetchPublicKey(username) {
       );
     } else {
       displayChatMessage("❌ Couldn't fetch public key for " + username + ": " + data.message, 'error');
+      console.error("Error fetching public key:", data.message);
       return null;
     }
   } catch (error) {
@@ -314,10 +341,10 @@ socket.on("chat_request_approved", async (data) => {
 socket.on('receive_aes_key_encrypted', async (data) => {
   console.log("🔑 Received encrypted AES key event.");
   try {
-    const encryptedAesKey = data.encrypted_aes_key;
+    const encryptedAesKeyBase64 = data.encrypted_aes_key;
     const sender = data.from_user;
 
-    console.log("Received encrypted AES Key (Base64):", encryptedAesKey);
+    console.log("Received encrypted AES Key (Base64):", encryptedAesKeyBase64);
 
     const privateKey = await getMyPrivateKey();
     if (!privateKey) {
@@ -330,7 +357,8 @@ socket.on('receive_aes_key_encrypted', async (data) => {
 
 
     // Decrypt the AES key using my RSA private key
-    const encryptedKeyBuffer = Uint8Array.from(atob(encryptedAesKey), c => c.charCodeAt(0));
+    // Use the robust base64ToArrayBuffer for decryption input
+    const encryptedKeyBuffer = base64ToArrayBuffer(encryptedAesKeyBase64);
     console.log("Encrypted AES Key Buffer length for decryption:", encryptedKeyBuffer.byteLength);
 
     const decryptedAesKeyBytes = await window.crypto.subtle.decrypt(
@@ -494,7 +522,8 @@ async function generateAndSendAesKey(recipientUsername) {
       recipientPublicKey,
       encoder.encode(newAesKey)
     );
-    const encryptedAesKeyBase64 = btoa(String.fromCharCode(...new Uint8Array(encryptedAesKeyBuffer)));
+    // Use the robust arrayBufferToBase64 for encryption output
+    const encryptedAesKeyBase64 = arrayBufferToBase64(encryptedAesKeyBuffer);
     console.log("🔑 Encrypted AES Key (Base64 for transport):", encryptedAesKeyBase64);
 
 
