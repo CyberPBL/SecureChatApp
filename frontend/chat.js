@@ -1,6 +1,6 @@
 // chat.js
 
-const BASE_URL = "https://securechatapp-ys8y.onrender.com";
+const BASE_URL = "https://securechatapp-ys8y.onrender.com"; // Ensure this matches your backend URL
 const socket = io(BASE_URL);
 
 // --- Global Chat Variables ---
@@ -311,7 +311,7 @@ socket.on("receive_message", async (data) => {
     displayChatMessage(`${senderUsername}: ${decryptedMessage}`, senderUsername === username ? 'sent' : 'received');
   } catch (e) {
     console.error("❌ Decryption failed", e);
-    displayChatMessage(`${data.username}: � (Unable to decrypt message)`, 'error');
+    displayChatMessage(`${data.username}: 🔒 (Unable to decrypt message)`, 'error');
   }
 });
 
@@ -421,4 +421,3 @@ async function sendMessage() {
     displayChatMessage("❌ Failed to send message: " + error.message, 'error');
   }
 }
-�
