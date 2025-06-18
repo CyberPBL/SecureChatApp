@@ -54,21 +54,18 @@ socketio = SocketIO(app, cors_allowed_origins=[
 
 # --- Flask Routes ---
 
-# Updated Endpoint for searching users by username
 @app.route('/search_user')
 def search_user():
-    query = request.args.get('query', '').strip() # Strip leading/trailing whitespace from query
+    query = request.args.get('query', '').strip()
     if not query:
         return jsonify({"success": False, "message": "No query provided", "user": None})
 
-    # Find the user by username. We now also explicitly retrieve the 'socket_id'.
     user_data = users_collection.find_one(
-        {"username": query}, # Ensure this query matches exactly what's in DB
-        {"_id": 0, "username": 1, "socket_id": 1} # Project username and socket_id
+        {"username": query},
+        {"_id": 0, "username": 1, "socket_id": 1}
     )
 
     if user_data:
-        # Check if the user has an active socket_id, which indicates they are online
         is_online = "socket_id" in user_data and user_data["socket_id"] is not None and user_data["socket_id"] != ""
         return jsonify({
             "success": True,
@@ -81,14 +78,13 @@ def search_user():
     else:
         return jsonify({"success": False, "message": "User not found.", "user": None})
 
-# Endpoint for user registration
 @app.route('/register', methods=['POST'])
 def register():
     try:
         data = request.get_json()
         print("📥 Received data:", data)
 
-        username = data.get("username").strip() # ✅ Strip username on registration
+        username = data.get("username").strip() # Strip username on registration
         pin = data.get("pin")
         public_key = data.get("publicKey")
 
@@ -112,11 +108,21 @@ def register():
         print("❌ Error in /register:", str(e))
         return jsonify({"success": False, "message": str(e)}), 500
 
-# Endpoint for user login
+@app.route('/get_public_key')
+def get_public_key():
+    username = request.args.get('username')
+    if not username:
+        return jsonify({"success": False, "message": "Username required"}), 400
+
+    user = users_collection.find_one({"username": username}, {"_id": 0, "public_key": 1})
+    if user:
+        return jsonify({"success": True, "public_key": user["public_key"]})
+    return jsonify({"success": False, "message": "User not found"}), 404
+
 @app.route('/login', methods=['POST'])
 def login():
     data = request.json
-    username = data.get('username').strip() # ✅ Strip username on login
+    username = data.get('username').strip() # Strip username on login
     pin = data.get('pin')
 
     if not username or not pin:
@@ -128,7 +134,8 @@ def login():
     else:
         return jsonify({"success": False, "message": "Invalid credentials"}), 401
 
-# --- Rest of SocketIO Event Handlers (unchanged from previous update) ---
+# --- SocketIO Event Handlers ---
+
 @socketio.on('connect')
 def handle_connect():
     print(f"🔗 Client connected: {request.sid}")
@@ -136,14 +143,15 @@ def handle_connect():
 @socketio.on('register_user')
 def handle_register_user(data):
     username = data.get('username')
+    if username: # ✅ Ensure username is not None before stripping
+        username = username.strip() # ✅ Added strip here for thoroughness
     sid = request.sid
 
     if username:
-        # Check if username exists before updating socket_id
         if users_collection.find_one({"username": username}):
             users_collection.update_one(
                 {"username": username},
-                {"$set": {"socket_id": sid}} # Only update if user exists
+                {"$set": {"socket_id": sid}}
             )
             print(f"🔵 User registered: {username} with SID: {sid}")
             emit('registered', {'message': f'User {username} registered successfully.'}, room=sid)
