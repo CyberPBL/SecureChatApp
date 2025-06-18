@@ -141,19 +141,28 @@ async function getMyPrivateKey() {
   const privateKeyPem = sessionStorage.getItem("privateKey");
   if (!privateKeyPem) {
     displayChatMessage("❌ Private key not found in sessionStorage. Please log in again.", 'error');
+    console.error("Private key PEM not found in sessionStorage.");
     return null;
   }
-  const b64 = privateKeyPem.replace(/-----[^-]+-----/g, "").replace(/\s+/g, "");
-  const binaryDer = atob(b64);
-  const buffer = new Uint8Array([...binaryDer].map(ch => ch.charCodeAt(0))).buffer;
+  try {
+    const b64 = privateKeyPem.replace(/-----[^-]+-----/g, "").replace(/\s+/g, "");
+    const binaryDer = atob(b64);
+    const buffer = new Uint8Array([...binaryDer].map(ch => ch.charCodeAt(0))).buffer;
 
-  return await window.crypto.subtle.importKey(
-    "pkcs8",
-    buffer,
-    { name: "RSA-OAEP", hash: "SHA-256" },
-    true,
-    ["decrypt"]
-  );
+    const importedKey = await window.crypto.subtle.importKey(
+      "pkcs8",
+      buffer,
+      { name: "RSA-OAEP", hash: "SHA-256" },
+      true,
+      ["decrypt"]
+    );
+    console.log("✅ Successfully imported private key.");
+    return importedKey;
+  } catch (error) {
+    console.error("❌ Error importing private key from PEM:", error);
+    displayChatMessage("❌ Error importing private key. Possible corruption. Please re-register.", 'error');
+    return null;
+  }
 }
 
 function generateRoomName(user1, user2) {
@@ -204,6 +213,7 @@ socket.on("chat_request", (data) => {
     currentRoom = roomName;
     chattingWith = fromUser;
     socket.emit("join", { room: roomName, username });
+    // As the accepter, you wait for the requester to send the encrypted AES key.
   }
 });
 
@@ -213,6 +223,7 @@ socket.on("chat_request_approved", async (data) => {
     currentRoom = roomName;
     chattingWith = data.by_user;
     socket.emit("join", { room: roomName, username });
+    // If I initiated the request and it's approved, I generate and send the AES key
     await generateAndSendAesKey(chattingWith);
   } else {
     displayChatMessage(`${data.by_user} rejected your chat request.`, 'info');
@@ -223,24 +234,35 @@ socket.on("chat_request_approved", async (data) => {
 });
 
 socket.on('receive_aes_key_encrypted', async (data) => {
+  console.log("🔑 Received encrypted AES key event.");
   try {
     const encryptedAesKey = data.encrypted_aes_key;
     const sender = data.from_user;
 
+    console.log("Received encrypted AES Key (Base64):", encryptedAesKey);
+
     const privateKey = await getMyPrivateKey();
     if (!privateKey) {
       displayChatMessage("❌ Failed to get private key for AES key decryption.", 'error');
+      console.error("Private key not available to decrypt received AES key.");
+      currentChatKey = null; // Ensure no key is used if private key is missing
       return;
     }
+    console.log("Private key retrieved:", privateKey);
+
+
+    // Decrypt the AES key using my RSA private key
+    const encryptedKeyBuffer = Uint8Array.from(atob(encryptedAesKey), c => c.charCodeAt(0));
+    console.log("Encrypted AES Key Buffer length for decryption:", encryptedKeyBuffer.byteLength);
 
     const decryptedAesKeyBytes = await window.crypto.subtle.decrypt(
       { name: "RSA-OAEP" },
       privateKey,
-      Uint8Array.from(atob(encryptedAesKey), c => c.charCodeAt(0))
+      encryptedKeyBuffer
     );
 
     currentChatKey = new TextDecoder().decode(decryptedAesKeyBytes);
-    console.log("🔑 Decrypted AES Key (for chat):", currentChatKey);
+    console.log("🔑 Decrypted AES Key (for chat):", currentChatKey); // This should be a readable string
     displayChatMessage(`🔑 Secure chat established with ${sender}. You can now send encrypted messages!`, 'info');
 
     socket.emit('aes_key_received', {
@@ -251,17 +273,19 @@ socket.on('receive_aes_key_encrypted', async (data) => {
     });
 
   } catch (error) {
-    console.error("❌ Error decrypting received AES key:", error);
-    displayChatMessage("❌ Failed to establish secure key. Messages will not be encrypted.", 'error');
-    currentChatKey = null;
+    console.error("❌ Error during receive_aes_key_encrypted (decryption failed):", error);
+    displayChatMessage("❌ Failed to establish secure key. Messages will not be encrypted. Check console for details.", 'error');
+    currentChatKey = null; // Ensure no key is used if decryption fails
   }
 });
 
 socket.on('aes_key_received', (data) => {
   if (data.status === 'success') {
     displayChatMessage(`🔑 ${data.from_user} has received and decrypted the chat key. Secure chat ready!`, 'info');
+    console.log(`AES key receipt confirmed by ${data.from_user}.`);
   } else {
     displayChatMessage(`❌ ${data.from_user} failed to receive/decrypt chat key.`, 'error');
+    console.error(`AES key receipt failed from ${data.from_user}.`);
   }
 });
 
@@ -277,11 +301,16 @@ socket.on("chat_approved", (data) => {
 
 socket.on('chat_history', async (data) => {
   console.log("Received chat history:", data.history);
-  chatBox.innerHTML = '';
+  chatBox.innerHTML = ''; // Clear current messages before loading history
   if (data.history && data.history.length > 0) {
     displayChatMessage("--- Chat History ---", 'info');
     for (const msg of data.history) {
       try {
+        // Ensure currentChatKey is available before attempting to decrypt history
+        if (!currentChatKey) {
+            displayChatMessage("❌ Cannot decrypt history: Secure key not established.", 'error');
+            break; // Stop trying to decrypt history
+        }
         const decryptedMessage = await AesEncryption.decrypt(msg.message, currentChatKey);
         const sender = msg.from_user === username ? 'You' : msg.from_user;
         displayChatMessage(`${sender}: ${decryptedMessage}`, msg.from_user === username ? 'sent' : 'received');
@@ -357,16 +386,21 @@ function searchUser() {
 }
 
 async function generateAndSendAesKey(recipientUsername) {
+  console.log("🔑 Generating and sending AES key to:", recipientUsername);
   try {
     const newAesKey = await AesEncryption.generateRandomAesKey();
-    currentChatKey = newAesKey;
+    currentChatKey = newAesKey; // Set my current chat key
+
+    console.log("Generated new AES Key (Base64):", newAesKey);
 
     const recipientPublicKey = await fetchPublicKey(recipientUsername);
     if (!recipientPublicKey) {
       displayChatMessage("❌ Could not get recipient's public key to exchange AES key.", 'error');
-      currentChatKey = null;
+      currentChatKey = null; // Clear key if cannot send
+      console.error("Recipient public key not found.");
       return;
     }
+    console.log("Recipient Public Key imported:", recipientPublicKey);
 
     const encoder = new TextEncoder();
     const encryptedAesKeyBuffer = await window.crypto.subtle.encrypt(
@@ -375,6 +409,8 @@ async function generateAndSendAesKey(recipientUsername) {
       encoder.encode(newAesKey)
     );
     const encryptedAesKeyBase64 = btoa(String.fromCharCode(...new Uint8Array(encryptedAesKeyBuffer)));
+    console.log("🔑 Encrypted AES Key (Base64 for transport):", encryptedAesKeyBase64);
+
 
     socket.emit('send_aes_key_encrypted', {
       from_user: username,
