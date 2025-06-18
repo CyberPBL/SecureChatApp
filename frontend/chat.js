@@ -7,6 +7,7 @@ const socket = io(BASE_URL);
 let currentRoom = null;
 let chattingWith = null;
 let currentChatKey = null; // This will be set dynamically via secure key exchange
+let approvedFriends = []; // ✅ Feature: Store approved friends
 
 // --- DOM Elements ---
 const chatBox = document.getElementById("chatBox");
@@ -14,6 +15,9 @@ const messageInput = document.getElementById("messageInput");
 const userNameDisplay = document.getElementById("userNameDisplay");
 const searchMessage = document.getElementById("searchMessage");
 const searchUserInput = document.getElementById("searchUser");
+const friendsContainer = document.getElementById("friendsContainer"); // ✅ Feature: Friends container element
+const noFriendsMessage = document.getElementById("noFriendsMessage"); // ✅ Feature: No friends message
+
 
 // --- Utility Functions ---
 
@@ -169,6 +173,67 @@ function generateRoomName(user1, user2) {
   return [user1, user2].sort().join("_");
 }
 
+// ✅ Feature: Display Friends List
+function displayFriendsList(friends) {
+  friendsContainer.innerHTML = ''; // Clear previous list
+  if (friends.length === 0) {
+    noFriendsMessage.style.display = 'block';
+    friendsContainer.appendChild(noFriendsMessage);
+  } else {
+    noFriendsMessage.style.display = 'none';
+    const ul = document.createElement('ul');
+    ul.className = 'friends-ul'; // Add a class for styling if needed
+    friends.forEach(friend => {
+      const li = document.createElement('li');
+      li.className = 'friend-item';
+      li.textContent = friend.username;
+      if (friend.is_online) {
+        li.classList.add('online');
+        li.title = `${friend.username} (Online)`;
+      } else {
+        li.classList.add('offline');
+        li.title = `${friend.username} (Offline)`;
+      }
+      li.addEventListener('click', () => startDirectChat(friend.username)); // Click to chat
+      ul.appendChild(li);
+    });
+    friendsContainer.appendChild(ul);
+  }
+}
+
+/**
+ * ✅ Feature: Starts a direct chat with an approved friend.
+ * This bypasses the chat request/approval flow.
+ * @param {string} friendUsername The username of the friend to chat with.
+ */
+async function startDirectChat(friendUsername) {
+    if (!username) { // Current user must be logged in
+        displayChatMessage("You must be logged in to start a chat.", 'error');
+        return;
+    }
+    if (friendUsername === username) {
+        displayChatMessage("You cannot chat with yourself.", 'info');
+        return;
+    }
+
+    displayChatMessage(`Attempting to start chat with ${friendUsername}...`, 'info');
+
+    // Check if friend is online first (optional but good UX)
+    const friendDataResponse = await fetch(`${BASE_URL}/search_user?query=${encodeURIComponent(friendUsername)}`);
+    const friendData = await friendDataResponse.json();
+
+    if (friendData.success && friendData.user && friendData.user.is_online) {
+        const roomName = generateRoomName(username, friendUsername);
+        currentRoom = roomName;
+        chattingWith = friendUsername;
+        socket.emit("join", { room: roomName, username: username });
+        await generateAndSendAesKey(chattingWith); // Initiate key exchange (requester role)
+    } else {
+        displayChatMessage(`❌ ${friendUsername} is currently offline. Cannot start direct chat.`, 'error');
+    }
+}
+
+
 // --- User Authentication and Setup ---
 const username = sessionStorage.getItem("username");
 if (!username) {
@@ -188,11 +253,20 @@ socket.on('registered', (data) => {
   console.log("Backend registration confirmation:", data.message);
   displayChatMessage(data.message, 'info');
   socket.emit('get_online_users');
+  socket.emit('get_friends', { username: username }); // ✅ Feature: Request friends list on registration
 });
 
 socket.on('online_users', (data) => {
   console.log('Online users:', data.users);
 });
+
+// ✅ Feature: Receive Friends List
+socket.on('friends_list', (data) => {
+  console.log('Received friends list:', data.friends);
+  approvedFriends = data.friends; // Update global friends array
+  displayFriendsList(approvedFriends); // Display friends in UI
+});
+
 
 socket.on('error', (data) => {
   console.error("Backend error:", data.message);
@@ -201,7 +275,7 @@ socket.on('error', (data) => {
 
 socket.on("chat_request", (data) => {
   const fromUser = data.from_user;
-  const accept = confirm(`🔔 ${fromUser} wants to chat with you. Accept?`);
+  const accept = confirm(`🔔 ${fromUser} wants to chat with you. Accept?`); // Consider custom modal
   socket.emit("approve_chat_request", {
     from_user: fromUser,
     to_user: username,
@@ -225,6 +299,10 @@ socket.on("chat_request_approved", async (data) => {
     socket.emit("join", { room: roomName, username });
     // If I initiated the request and it's approved, I generate and send the AES key
     await generateAndSendAesKey(chattingWith);
+
+    // ✅ Feature: Refresh friends list after approval
+    socket.emit('get_friends', { username: username });
+
   } else {
     displayChatMessage(`${data.by_user} rejected your chat request.`, 'info');
     chattingWith = null;
@@ -308,7 +386,7 @@ socket.on('chat_history', async (data) => {
       try {
         // Ensure currentChatKey is available before attempting to decrypt history
         if (!currentChatKey) {
-            displayChatMessage("❌ Cannot decrypt history: Secure key not established.", 'error');
+            displayChatMessage("❌ Cannot decrypt history: Secure key not established. Messages from history will not be shown.", 'error');
             break; // Stop trying to decrypt history
         }
         const decryptedMessage = await AesEncryption.decrypt(msg.message, currentChatKey);
@@ -359,6 +437,14 @@ function searchUser() {
   if (searchUsername === currentUser) {
       searchMessage.textContent = "You cannot chat with yourself.";
       return;
+  }
+
+  // ✅ Feature: Check if user is already a friend
+  const isFriend = approvedFriends.some(friend => friend.username === searchUsername);
+  if (isFriend) {
+    displayChatMessage(`You are already friends with ${searchUsername}. Starting chat...`, 'info');
+    startDirectChat(searchUsername); // Directly start chat if already a friend
+    return;
   }
 
   fetch(`${BASE_URL}/search_user?query=${encodeURIComponent(searchUsername)}`)
