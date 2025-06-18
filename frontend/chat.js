@@ -1,6 +1,6 @@
 // chat.js
 
-const BASE_URL = "https://securechatapp-ys8y.onrender.com"; // Ensure this matches your backend URL
+const BASE_URL = "https://securechat-frontend-9qs2.onrender.com"; // Ensure this matches your backend URL
 const socket = io(BASE_URL);
 
 // --- Global Chat Variables ---
@@ -244,17 +244,12 @@ async function startDirectChat(friendUsername) {
         return;
     }
 
+    // Reset key exchange flag and current chat key for a fresh start with any new chat partner
+    keyExchangeInitiated = false; // Reset early for any new attempt
+    currentChatKey = null;
+    chatBox.innerHTML = ''; // Clear chat history for new chat
+
     displayChatMessage(`Attempting to start chat with ${friendUsername}...`, 'info');
-
-    // Reset key exchange flag and current chat key if starting a new conversation with a different user
-    if (chattingWith !== friendUsername) {
-        keyExchangeInitiated = false;
-        currentChatKey = null;
-        chatBox.innerHTML = ''; // Clear chat history for new chat
-    }
-
-    // Set keyExchangeInitiated to true immediately when initiating a chat
-    keyExchangeInitiated = true; // Set flag early
 
     const friendDataResponse = await fetch(`${BASE_URL}/search_user?query=${encodeURIComponent(friendUsername)}`);
     const friendData = await friendDataResponse.json();
@@ -314,6 +309,12 @@ socket.on('error', (data) => {
 socket.on("chat_request", (data) => {
   const fromUser = data.from_user;
   const accept = confirm(`🔔 ${fromUser} wants to chat with you. Accept?`); // Consider custom modal
+
+  // Reset key exchange flag and current chat key for a fresh start with any new chat partner
+  keyExchangeInitiated = false; // Reset early for any new attempt
+  currentChatKey = null;
+  chatBox.innerHTML = ''; // Clear chat history for new chat
+
   socket.emit("approve_chat_request", {
     from_user: fromUser,
     to_user: username,
@@ -322,33 +323,24 @@ socket.on("chat_request", (data) => {
 
   if (accept) {
     const roomName = generateRoomName(username, fromUser);
-    // Reset key exchange state if this is a new incoming chat
-    if (chattingWith !== fromUser) {
-        keyExchangeInitiated = false;
-        currentChatKey = null;
-        chatBox.innerHTML = ''; // Clear chat history for new chat
-    }
-    // Set keyExchangeInitiated to true immediately for incoming chat acceptance
-    keyExchangeInitiated = true; // Set flag early
     currentRoom = roomName;
     chattingWith = fromUser;
     socket.emit("join", { room: roomName, username });
     // As the accepter, you wait for the requester to send the encrypted AES key.
     // The keyExchangeInitiated flag on the requester side will prevent multiple sends.
+  } else {
+    keyExchangeInitiated = false; // Reset if rejected
   }
 });
 
 socket.on("chat_request_approved", async (data) => {
   if (data.approved) {
     const roomName = generateRoomName(username, data.by_user);
-    // Reset key exchange state if starting a new chat with a different user
-    if (chattingWith !== data.by_user) {
-        keyExchangeInitiated = false;
-        currentChatKey = null;
-        chatBox.innerHTML = ''; // Clear chat history for new chat
-    }
-    // Set keyExchangeInitiated to true immediately when chat is approved
-    keyExchangeInitiated = true; // Set flag early
+    // Reset key exchange flag and current chat key for a fresh start with any new chat partner
+    keyExchangeInitiated = false; // Reset early for any new attempt
+    currentChatKey = null;
+    chatBox.innerHTML = ''; // Clear chat history for new chat
+
     currentRoom = roomName;
     chattingWith = data.by_user;
     socket.emit("join", { room: roomName, username });
@@ -537,11 +529,13 @@ async function generateAndSendAesKey(recipientUsername) {
   // If keyExchangeInitiated is true and we already have a key for this partner, skip.
   // This helps prevent re-generating keys if the flag was set by an earlier, successful initiation.
   if (keyExchangeInitiated && currentChatKey && chattingWith === recipientUsername) {
-    console.log("🔑 Key exchange or key already established for this chat. Skipping redundant call.");
+    console.log("🔑 Key exchange or key already established for this chat. Skipping redundant call. Flag:", keyExchangeInitiated, "Key:", !!currentChatKey);
     return;
+  } else if (keyExchangeInitiated) {
+     console.log("🔑 Key exchange already initiated. Skipping redundant call. Flag:", keyExchangeInitiated, "Key:", !!currentChatKey);
+     return;
   }
 
-  // keyExchangeInitiated = true; // This is now set earlier in startDirectChat/chat_request_approved
 
   console.log("🔑 Generating and sending AES key to:", recipientUsername);
   try {
