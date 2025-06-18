@@ -8,6 +8,7 @@ let currentRoom = null;
 let chattingWith = null;
 let currentChatKey = null; // This will be set dynamically via secure key exchange
 let approvedFriends = []; // ✅ Feature: Store approved friends
+let keyExchangeInitiated = false; // NEW: Flag to prevent multiple key exchanges
 
 // --- DOM Elements ---
 const chatBox = document.getElementById("chatBox");
@@ -245,7 +246,13 @@ async function startDirectChat(friendUsername) {
 
     displayChatMessage(`Attempting to start chat with ${friendUsername}...`, 'info');
 
-    // Check if friend is online first (optional but good UX)
+    // Reset key exchange flag and current chat key if starting a new conversation with a different user
+    if (chattingWith !== friendUsername) {
+        keyExchangeInitiated = false;
+        currentChatKey = null;
+        chatBox.innerHTML = ''; // Clear chat history for new chat
+    }
+
     const friendDataResponse = await fetch(`${BASE_URL}/search_user?query=${encodeURIComponent(friendUsername)}`);
     const friendData = await friendDataResponse.json();
 
@@ -311,16 +318,29 @@ socket.on("chat_request", (data) => {
 
   if (accept) {
     const roomName = generateRoomName(username, fromUser);
+    // Reset key exchange state if this is a new incoming chat
+    if (chattingWith !== fromUser) {
+        keyExchangeInitiated = false;
+        currentChatKey = null;
+        chatBox.innerHTML = ''; // Clear chat history for new chat
+    }
     currentRoom = roomName;
     chattingWith = fromUser;
     socket.emit("join", { room: roomName, username });
     // As the accepter, you wait for the requester to send the encrypted AES key.
+    // The keyExchangeInitiated flag on the requester side will prevent multiple sends.
   }
 });
 
 socket.on("chat_request_approved", async (data) => {
   if (data.approved) {
     const roomName = generateRoomName(username, data.by_user);
+    // Reset key exchange state if starting a new chat with a different user
+    if (chattingWith !== data.by_user) {
+        keyExchangeInitiated = false;
+        currentChatKey = null;
+        chatBox.innerHTML = ''; // Clear chat history for new chat
+    }
     currentRoom = roomName;
     chattingWith = data.by_user;
     socket.emit("join", { room: roomName, username });
@@ -335,6 +355,7 @@ socket.on("chat_request_approved", async (data) => {
     chattingWith = null;
     currentRoom = null;
     currentChatKey = null;
+    keyExchangeInitiated = false; // Reset flag if rejected
   }
 });
 
@@ -351,6 +372,7 @@ socket.on('receive_aes_key_encrypted', async (data) => {
       displayChatMessage("❌ Failed to get private key for AES key decryption.", 'error');
       console.error("Private key not available to decrypt received AES key.");
       currentChatKey = null; // Ensure no key is used if private key is missing
+      keyExchangeInitiated = false; // Reset on failure
       return;
     }
     console.log("Private key retrieved:", privateKey);
@@ -377,11 +399,13 @@ socket.on('receive_aes_key_encrypted', async (data) => {
       room: currentRoom,
       status: 'success'
     });
+    keyExchangeInitiated = true; // Confirm key is established on receiver side
 
   } catch (error) {
     console.error("❌ Error during receive_aes_key_encrypted (decryption failed):", error);
     displayChatMessage("❌ Failed to establish secure key. Messages will not be encrypted. Check console for details.", 'error');
     currentChatKey = null; // Ensure no key is used if decryption fails
+    keyExchangeInitiated = false; // Reset on failure
   }
 });
 
@@ -389,9 +413,11 @@ socket.on('aes_key_received', (data) => {
   if (data.status === 'success') {
     displayChatMessage(`🔑 ${data.from_user} has received and decrypted the chat key. Secure chat ready!`, 'info');
     console.log(`AES key receipt confirmed by ${data.from_user}.`);
+    keyExchangeInitiated = true; // Confirm key is established on sender side after confirmation
   } else {
     displayChatMessage(`❌ ${data.from_user} failed to receive/decrypt chat key.`, 'error');
     console.error(`AES key receipt failed from ${data.from_user}.`);
+    keyExchangeInitiated = false; // Reset on failure
   }
 });
 
@@ -500,6 +526,15 @@ function searchUser() {
 }
 
 async function generateAndSendAesKey(recipientUsername) {
+  // Prevent multiple calls if key exchange is already initiated for this chat
+  // or if a current chat key already exists for the current conversation partner.
+  if (keyExchangeInitiated || currentChatKey && chattingWith === recipientUsername) {
+    console.log("🔑 Key exchange or key already established for this chat. Skipping redundant call.");
+    return;
+  }
+
+  keyExchangeInitiated = true; // Set flag to true as soon as we start
+
   console.log("🔑 Generating and sending AES key to:", recipientUsername);
   try {
     const newAesKey = await AesEncryption.generateRandomAesKey();
@@ -511,6 +546,7 @@ async function generateAndSendAesKey(recipientUsername) {
     if (!recipientPublicKey) {
       displayChatMessage("❌ Could not get recipient's public key to exchange AES key.", 'error');
       currentChatKey = null; // Clear key if cannot send
+      keyExchangeInitiated = false; // Reset flag on failure
       console.error("Recipient public key not found.");
       return;
     }
@@ -539,6 +575,7 @@ async function generateAndSendAesKey(recipientUsername) {
     console.error("❌ Error during AES key generation/encryption/sending:", error);
     displayChatMessage("❌ Failed to initiate secure key exchange.", 'error');
     currentChatKey = null;
+    keyExchangeInitiated = false; // Reset flag on failure
   }
 }
 
