@@ -1,3 +1,5 @@
+# app.py
+
 import eventlet
 eventlet.monkey_patch()
 
@@ -104,7 +106,7 @@ def register():
         users_collection.insert_one({
             "username": username,
             "pin": hashed_pin,
-            "public_key": public_key,
+            "public_key": public_key, # Ensure public key is saved here during registration
             "friends": [],
             "pending_requests": []
         })
@@ -159,11 +161,20 @@ def get_friends_list():
         if 'friends' in user_doc and user_doc['friends']:
             for friend_info in user_doc['friends']:
                 friend_username = friend_info['username']
-                friend_public_key = friend_info['public_key']
+                # FIX: Explicitly fetch the friend's public_key from their user document
+                friend_user_doc = users_collection.find_one({"username": friend_username}, {"_id": 0, "public_key": 1})
+                
+                friend_public_key = None
+                if friend_user_doc and 'public_key' in friend_user_doc:
+                    friend_public_key = friend_user_doc['public_key']
+                else:
+                    print(f"Warning: Public key not found in main user document for friend: {friend_username}")
+                    # You might want to handle this more robustly, e.g., by logging or alerting if a key is truly missing
+
                 is_online = friend_username in online_users_sockets
                 friends_data.append({
                     "username": friend_username,
-                    "publicKey": friend_public_key,
+                    "publicKey": friend_public_key, # Now guaranteed to be fetched from their main document
                     "status": "online" if is_online else "offline"
                 })
 
@@ -316,11 +327,11 @@ def handle_accept_friend_request(data):
 
         users_collection.update_one(
             {"username": acceptor},
-            {"$addToSet": {"friends": {"username": requester, "public_key": requester_user['public_key']}}}
+            {"$addToSet": {"friends": {"username": requester, "public_key": requester_user['public_key']}}} # Stores public_key here
         )
         users_collection.update_one(
             {"username": requester},
-            {"$addToSet": {"friends": {"username": acceptor, "public_key": acceptor_user['public_key']}}}
+            {"$addToSet": {"friends": {"username": acceptor, "public_key": acceptor_user['public_key']}}} # Stores public_key here
         )
 
         emit('friend_request_accepted', {'requester': requester}, room=request.sid)
