@@ -156,6 +156,26 @@ p#authMessage, p#searchMessage {
     color: #6c757d; /* Gray text for offline status */
 }
 
+.friends-list-container li.friend-item.request {
+    border-left: 5px solid #ffc107; /* Orange/Yellow for pending requests */
+    color: #ffc107;
+}
+
+/* Style for the currently active chat friend */
+.friends-list-container li.friend-item.active-chat {
+    background-color: #30363d; /* Darker background for active chat */
+    border: 1px solid #58a6ff; /* Blue border for active chat */
+    box-shadow: 0 0 8px rgba(88, 166, 255, 0.6); /* Subtle glow */
+}
+
+/* New message indicator */
+.friends-list-container li.friend-item.new-message-indicator {
+    background-color: #004d40; /* Dark teal for new messages */
+    border-left: 5px solid #00c853; /* Brighter green indicator */
+    font-weight: bold;
+}
+
+
 #noFriendsMessage {
     color: #8b949e; /* Slightly lighter gray for info text */
     font-style: italic;
@@ -166,7 +186,7 @@ p#authMessage, p#searchMessage {
 
 /* Responsive adjustments */
 @media (max-width: 600px) {
-    .container, .chat-container {
+    .container, .chat-container, .auth-container {
         width: 95%;
         margin: 10px auto;
         padding: 20px;
