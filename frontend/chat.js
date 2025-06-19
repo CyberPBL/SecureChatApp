@@ -3,416 +3,506 @@
 const BASE_URL = "https://securechatapp-ys8y.onrender.com";
 const socket = io(BASE_URL);
 
-// --- Global Chat Variables ---
-let currentRoom = null;
-let chattingWith = null;
-let currentChatKey = null; // This will be set dynamically via secure key exchange
+let currentUser = sessionStorage.getItem("username");
+let privateKeyPem = sessionStorage.getItem("privateKey");
+let currentChatPartner = null; // Stores the username of the actively chatting friend
+let currentChatRoom = null;    // Stores the current chat room ID
+let friendPublicKeys = {};     // Cache for friend public keys {username: publicKeyObject}
 
-// --- DOM Elements ---
+const userNameDisplay = document.getElementById("userNameDisplay");
 const chatBox = document.getElementById("chatBox");
 const messageInput = document.getElementById("messageInput");
-const userNameDisplay = document.getElementById("userNameDisplay");
+const sendButton = document.getElementById("sendButton");
 const searchMessage = document.getElementById("searchMessage");
-const searchUserInput = document.getElementById("searchUser");
+const friendsContainer = document.getElementById("friendsContainer");
+const noFriendsMessage = document.getElementById("noFriendsMessage");
+const currentChatPartnerDisplay = document.getElementById("currentChatPartner");
+
+// --- Initialization on page load ---
+document.addEventListener("DOMContentLoaded", async () => {
+    if (!currentUser || !privateKeyPem) {
+        alert("You are not logged in. Please log in first.");
+        window.location.href = "index.html"; // Redirect to login page
+        return;
+    }
+    userNameDisplay.textContent = currentUser;
+
+    // Connect to Socket.IO and register the user
+    socket.emit("register_user", { username: currentUser });
+    console.log(`Sending 'register_user' for: ${currentUser}`);
+
+    // Fetch and display friends
+    await fetchFriends();
+});
 
 // --- Utility Functions ---
 
 /**
- * Displays a message in the chat box or as a system notification.
+ * Appends a message to the chat box.
+ * @param {string} sender The sender's username.
  * @param {string} message The message content.
- * @param {string} type 'system', 'sent', 'received', 'error', 'info'.
+ * @param {string} type 'sent', 'received', 'info', or 'error'.
  */
-function displayChatMessage(message, type = 'info') {
-  const msgDiv = document.createElement("div");
-  msgDiv.classList.add('chat-message', type);
-  msgDiv.textContent = message;
-  chatBox.appendChild(msgDiv);
-  chatBox.scrollTop = chatBox.scrollHeight; // Auto-scroll to bottom
-}
+function appendMessage(sender, message, type) {
+    const messageElement = document.createElement("div");
+    messageElement.classList.add("chat-message", type);
 
-// AES Encryption Utility (client-side implementation using Web Crypto API)
-class AesEncryption {
-  static async encrypt(message, key) {
-    const keyBytes = new TextEncoder().encode(key);
-    if (![16, 24, 32].includes(keyBytes.byteLength)) {
-      throw new Error("AES key must be 16, 24, or 32 bytes (128, 192, or 256 bits).");
+    if (type === 'sent') {
+        messageElement.textContent = `You: ${message}`;
+    } else if (type === 'received') {
+        messageElement.textContent = `${sender}: ${message}`;
+    } else { // info or error
+        messageElement.textContent = message;
     }
 
-    const iv = window.crypto.getRandomValues(new Uint8Array(16));
-    const encodedMessage = new TextEncoder().encode(message);
-
-    const importedKey = await window.crypto.subtle.importKey(
-      "raw",
-      keyBytes,
-      { name: "AES-CBC" },
-      false,
-      ["encrypt"]
-    );
-
-    const encryptedBuffer = await window.crypto.subtle.encrypt(
-      { name: "AES-CBC", iv: iv },
-      importedKey,
-      encodedMessage
-    );
-
-    const combined = new Uint8Array(iv.length + encryptedBuffer.byteLength);
-    combined.set(iv);
-    combined.set(new Uint8Array(encryptedBuffer), iv.length);
-
-    return btoa(String.fromCharCode(...combined));
-  }
-
-  static async decrypt(encryptedBase64, key) {
-    const keyBytes = new TextEncoder().encode(key);
-    if (![16, 24, 32].includes(keyBytes.byteLength)) {
-      throw new Error("AES key must be 16, 24, or 32 bytes (128, 192, or 256 bits).");
-    }
-
-    const decoded = atob(encryptedBase64);
-    const combined = new Uint8Array([...decoded].map(char => char.charCodeAt(0)));
-
-    const iv = combined.slice(0, 16);
-    const encryptedData = combined.slice(16);
-
-    const importedKey = await window.crypto.subtle.importKey(
-      "raw",
-      keyBytes,
-      { name: "AES-CBC" },
-      false,
-      ["decrypt"]
-    );
-
-    const decryptedBuffer = await window.crypto.subtle.decrypt(
-      { name: "AES-CBC", iv: iv },
-      importedKey,
-      encryptedData
-    );
-
-    return new TextDecoder().decode(decryptedBuffer);
-  }
-
-  static async generateRandomAesKey() {
-    const key = await window.crypto.subtle.generateKey(
-      {
-        name: "AES-CBC",
-        length: 256,
-      },
-      true,
-      ["encrypt", "decrypt"]
-    );
-    const exportedKey = await window.crypto.subtle.exportKey("raw", key);
-    return btoa(String.fromCharCode(...new Uint8Array(exportedKey)));
-  }
+    chatBox.appendChild(messageElement);
+    chatBox.scrollTop = chatBox.scrollHeight; // Scroll to bottom
 }
 
-async function fetchPublicKey(username) {
-  try {
-    const response = await fetch(`${BASE_URL}/get_public_key?username=${encodeURIComponent(username)}`);
-    const data = await response.json();
-    if (data.success) {
-      const pem = data.public_key;
-      const b64 = pem.replace(/-----[^-]+-----/g, "").replace(/\s+/g, "");
-      const binaryDer = atob(b64);
-      const buffer = new Uint8Array([...binaryDer].map(ch => ch.charCodeAt(0))).buffer;
-      return await window.crypto.subtle.importKey(
+/**
+ * Displays a message in the searchMessage element.
+ * @param {string} message The message to display.
+ * @param {boolean} isError True if it's an error message (red text), false otherwise (green text).
+ */
+function displaySearchMessage(message, isError = false) {
+    searchMessage.textContent = message;
+    searchMessage.style.color = isError ? "red" : "green";
+    setTimeout(() => {
+        searchMessage.textContent = "";
+    }, 5000);
+}
+
+/**
+ * Imports a PEM formatted public key into a CryptoKey object.
+ * @param {string} pem The PEM formatted public key.
+ * @returns {Promise<CryptoKey>} The CryptoKey object.
+ */
+async function importPublicKey(pem) {
+    const pemHeader = "-----BEGIN PUBLIC KEY-----";
+    const pemFooter = "-----END PUBLIC KEY-----";
+    const pemContents = pem.substring(pemHeader.length, pem.length - pemFooter.length)
+                           .replace(/\s/g, '');
+    const binaryDer = Uint8Array.from(atob(pemContents), c => c.charCodeAt(0));
+    return window.crypto.subtle.importKey(
         "spki",
-        buffer,
-        { name: "RSA-OAEP", hash: "SHA-256" },
+        binaryDer,
+        {
+            name: "RSA-OAEP",
+            hash: "SHA-256"
+        },
         true,
         ["encrypt"]
-      );
-    } else {
-      displayChatMessage("❌ Couldn't fetch public key for " + username + ": " + data.message, 'error');
-      return null;
+    );
+}
+
+/**
+ * Imports a PEM formatted private key into a CryptoKey object.
+ * @param {string} pem The PEM formatted private key.
+ * @returns {Promise<CryptoKey>} The CryptoKey object.
+ */
+async function importPrivateKey(pem) {
+    const pemHeader = "-----BEGIN PRIVATE KEY-----";
+    const pemFooter = "-----END PRIVATE KEY-----";
+    const pemContents = pem.substring(pemHeader.length, pem.length - pemFooter.length)
+                           .replace(/\s/g, '');
+    const binaryDer = Uint8Array.from(atob(pemContents), c => c.charCodeAt(0));
+    return window.crypto.subtle.importKey(
+        "pkcs8",
+        binaryDer,
+        {
+            name: "RSA-OAEP",
+            hash: "SHA-256"
+        },
+        true,
+        ["decrypt"]
+    );
+}
+
+/**
+ * Encrypts a message using a public key.
+ * @param {string} message The message to encrypt.
+ * @param {CryptoKey} publicKey The public key to use for encryption.
+ * @returns {Promise<string>} The base64 encoded encrypted message.
+ */
+async function encryptMessage(message, publicKey) {
+    const encoded = new TextEncoder().encode(message);
+    const encryptedBuffer = await window.crypto.subtle.encrypt(
+        { name: "RSA-OAEP" },
+        publicKey,
+        encoded
+    );
+    return btoa(String.fromCharCode(...new Uint8Array(encryptedBuffer)));
+}
+
+/**
+ * Decrypts a message using a private key.
+ * @param {string} encryptedBase64 The base64 encoded encrypted message.
+ * @param {CryptoKey} privateKey The private key to use for decryption.
+ * @returns {Promise<string>} The decrypted message.
+ */
+async function decryptMessage(encryptedBase664, privateKey) {
+    const encryptedBuffer = Uint8Array.from(atob(encryptedBase664), c => c.charCodeAt(0));
+    try {
+        const decryptedBuffer = await window.crypto.subtle.decrypt(
+            { name: "RSA-OAEP" },
+            privateKey,
+            encryptedBuffer
+        );
+        return new TextDecoder().decode(decryptedBuffer);
+    } catch (e) {
+        console.error("Decryption failed:", e);
+        return "[Could not decrypt message]"; // Indicate decryption failure
     }
-  } catch (error) {
-    console.error("Error fetching public key:", error);
-    displayChatMessage("❌ Error fetching public key: " + error.message, 'error');
-    return null;
-  }
 }
 
-async function getMyPrivateKey() {
-  const privateKeyPem = sessionStorage.getItem("privateKey");
-  if (!privateKeyPem) {
-    displayChatMessage("❌ Private key not found in sessionStorage. Please log in again.", 'error');
-    return null;
-  }
-  const b64 = privateKeyPem.replace(/-----[^-]+-----/g, "").replace(/\s+/g, "");
-  const binaryDer = atob(b64);
-  const buffer = new Uint8Array([...binaryDer].map(ch => ch.charCodeAt(0))).buffer;
+// --- Socket.IO Event Handlers ---
 
-  return await window.crypto.subtle.importKey(
-    "pkcs8",
-    buffer,
-    { name: "RSA-OAEP", hash: "SHA-256" },
-    true,
-    ["decrypt"]
-  );
-}
-
-function generateRoomName(user1, user2) {
-  return [user1, user2].sort().join("_");
-}
-
-// --- User Authentication and Setup ---
-const username = sessionStorage.getItem("username");
-if (!username) {
-  displayChatMessage("You are not logged in. Please log in.", 'error');
-  window.location.href = "index.html";
-} else {
-  userNameDisplay.textContent = username;
-}
-
-// --- Socket.IO Event Listeners ---
 socket.on('connect', () => {
-  console.log("✅ Socket.IO connected with ID:", socket.id);
-  socket.emit("register_user", { username: username });
+    console.log("✅ Socket.IO connected with ID:", socket.id);
+    if (currentUser) {
+        socket.emit("register_user", { username: currentUser });
+    }
 });
 
 socket.on('registered', (data) => {
-  console.log("Backend registration confirmation:", data.message);
-  displayChatMessage(data.message, 'info');
-  socket.emit('get_online_users');
-});
-
-socket.on('online_users', (data) => {
-  console.log('Online users:', data.users);
+    console.log("Backend registration confirmation:", data.message);
+    if (data.onlineUsers) {
+        console.log("Online users:", data.onlineUsers);
+        updateFriendOnlineStatus(data.onlineUsers);
+    }
 });
 
 socket.on('error', (data) => {
-  console.error("Backend error:", data.message);
-  displayChatMessage("Error: " + data.message, 'error');
+    console.error("Backend error:", data.message);
+    appendMessage("System", `Error: ${data.message}`, 'error');
+    displaySearchMessage(`Error: ${data.message}`, true);
 });
 
-socket.on("chat_request", (data) => {
-  const fromUser = data.from_user;
-  const accept = confirm(`🔔 ${fromUser} wants to chat with you. Accept?`);
-  socket.emit("approve_chat_request", {
-    from_user: fromUser,
-    to_user: username,
-    approved: accept
-  });
-
-  if (accept) {
-    const roomName = generateRoomName(username, fromUser);
-    currentRoom = roomName;
-    chattingWith = fromUser;
-    socket.emit("join", { room: roomName, username });
-  }
+socket.on('user_found', (data) => {
+    if (data.foundUser) {
+        displaySearchMessage(`User '${data.foundUser}' found. Sending friend request...`);
+        socket.emit('send_friend_request', { sender: currentUser, receiver: data.foundUser });
+    } else {
+        displaySearchMessage(`User '${data.searchedUser}' not found.`, true);
+    }
 });
 
-socket.on("chat_request_approved", async (data) => {
-  if (data.approved) {
-    const roomName = generateRoomName(username, data.by_user);
-    currentRoom = roomName;
-    chattingWith = data.by_user;
-    socket.emit("join", { room: roomName, username });
-    await generateAndSendAesKey(chattingWith);
-  } else {
-    displayChatMessage(`${data.by_user} rejected your chat request.`, 'info');
-    chattingWith = null;
-    currentRoom = null;
-    currentChatKey = null;
-  }
+socket.on('friend_request_sent', (data) => {
+    displaySearchMessage(`Friend request sent to ${data.receiver}.`);
 });
 
-socket.on('receive_aes_key_encrypted', async (data) => {
-  try {
-    const encryptedAesKey = data.encrypted_aes_key;
-    const sender = data.from_user;
-
-    const privateKey = await getMyPrivateKey();
-    if (!privateKey) {
-      displayChatMessage("❌ Failed to get private key for AES key decryption.", 'error');
-      return;
+socket.on('friend_request_received', (data) => {
+    // Check if the request is already displayed
+    const existingRequest = document.getElementById(`request-${data.sender}`);
+    if (existingRequest) {
+        console.log(`Friend request from ${data.sender} already displayed.`);
+        return;
     }
 
-    const decryptedAesKeyBytes = await window.crypto.subtle.decrypt(
-      { name: "RSA-OAEP" },
-      privateKey,
-      Uint8Array.from(atob(encryptedAesKey), c => c.charCodeAt(0))
-    );
-
-    currentChatKey = new TextDecoder().decode(decryptedAesKeyBytes);
-    console.log("🔑 Decrypted AES Key (for chat):", currentChatKey);
-    displayChatMessage(`🔑 Secure chat established with ${sender}. You can now send encrypted messages!`, 'info');
-
-    socket.emit('aes_key_received', {
-      from_user: username,
-      to_user: sender,
-      room: currentRoom,
-      status: 'success'
-    });
-
-  } catch (error) {
-    console.error("❌ Error decrypting received AES key:", error);
-    displayChatMessage("❌ Failed to establish secure key. Messages will not be encrypted.", 'error');
-    currentChatKey = null;
-  }
+    appendMessage("System", `Friend request from ${data.sender}.`, 'info');
+    const friendRequestElement = document.createElement("li");
+    friendRequestElement.id = `request-${data.sender}`;
+    friendRequestElement.classList.add("friend-item", "request"); // Add request class for styling
+    friendRequestElement.innerHTML = `
+        <span>${data.sender} (Pending Request)</span>
+        <div>
+            <button onclick="acceptFriendRequest('${data.sender}')" style="background-color: #28a745; width: auto; margin: 0 5px;">Accept</button>
+            <button onclick="rejectFriendRequest('${data.sender}')" style="background-color: #dc3545; width: auto; margin: 0 5px;">Reject</button>
+        </div>
+    `;
+    friendsContainer.querySelector('ul').prepend(friendRequestElement); // Add to top of friend list
+    noFriendsMessage.style.display = 'none'; // Hide "no friends" message
 });
 
-socket.on('aes_key_received', (data) => {
-  if (data.status === 'success') {
-    displayChatMessage(`🔑 ${data.from_user} has received and decrypted the chat key. Secure chat ready!`, 'info');
-  } else {
-    displayChatMessage(`❌ ${data.from_user} failed to receive/decrypt chat key.`, 'error');
-  }
+socket.on('friend_request_accepted', (data) => {
+    appendMessage("System", `${data.requester} accepted your friend request!`, 'info');
+    displaySearchMessage(`${data.requester} is now your friend!`, false);
+    fetchFriends(); // Refresh friends list
 });
 
-socket.on("chat_approved", (data) => {
-  const chatPartner = data.with;
-  currentRoom = data.room;
-  console.log(`Chat approved with: ${chatPartner} in room: ${currentRoom}`);
-  displayChatMessage(`Chat started with ${chatPartner}.`, 'info');
-
-  searchUserInput.value = "";
-  searchMessage.textContent = "";
-});
-
-socket.on('chat_history', async (data) => {
-  console.log("Received chat history:", data.history);
-  chatBox.innerHTML = '';
-  if (data.history && data.history.length > 0) {
-    displayChatMessage("--- Chat History ---", 'info');
-    for (const msg of data.history) {
-      try {
-        const decryptedMessage = await AesEncryption.decrypt(msg.message, currentChatKey);
-        const sender = msg.from_user === username ? 'You' : msg.from_user;
-        displayChatMessage(`${sender}: ${decryptedMessage}`, msg.from_user === username ? 'sent' : 'received');
-      } catch (e) {
-        console.error("Error decrypting history message:", e);
-        const sender = msg.from_user === username ? 'You' : msg.from_user;
-        displayChatMessage(`${sender}: 🔒 (Unable to decrypt history message)`, msg.from_user === username ? 'sent' : 'received');
-      }
+socket.on('friend_request_rejected', (data) => {
+    appendMessage("System", `${data.rejecter} rejected your friend request.`, 'info');
+    displaySearchMessage(`${data.rejecter} rejected your friend request.`, true);
+    // Remove the request element if it exists in the list
+    const requestElement = document.getElementById(`request-${data.rejecter}`);
+    if (requestElement) {
+        requestElement.remove();
     }
-    displayChatMessage("--- End History ---", 'info');
-  } else {
-    displayChatMessage("No chat history found for this conversation.", 'info');
-  }
 });
 
-socket.on("receive_message", async (data) => {
-  try {
-    const encryptedMessage = data.message;
-    const senderUsername = data.username;
-
-    if (!currentChatKey) {
-      displayChatMessage(`${senderUsername}: 🔒 (No shared key to decrypt message)`, 'error');
-      return;
-    }
-
-    const decryptedMessage = await AesEncryption.decrypt(encryptedMessage, currentChatKey);
-    displayChatMessage(`${senderUsername}: ${decryptedMessage}`, senderUsername === username ? 'sent' : 'received');
-  } catch (e) {
-    console.error("❌ Decryption failed", e);
-    displayChatMessage(`${data.username}: 🔒 (Unable to decrypt message)`, 'error');
-  }
+socket.on('friend_list_updated', async () => {
+    console.log("Friend list updated, re-fetching friends.");
+    await fetchFriends();
 });
 
+socket.on('chat_approved', async (data) => {
+    console.log(`Chat approved with: ${data.partner} in room: ${data.room}`);
+    currentChatPartner = data.partner;
+    currentChatRoom = data.room;
+    currentChatPartnerDisplay.textContent = `(Chatting with: ${currentChatPartner})`;
 
-// --- Functions to Trigger Actions ---
+    // Enable message input and send button
+    messageInput.removeAttribute("disabled");
+    sendButton.removeAttribute("disabled");
+    messageInput.focus();
 
-function searchUser() {
-  const searchUsername = searchUserInput.value.trim(); // ✅ Trim input value
-  const currentUser = sessionStorage.getItem("username"); // Get current user from session
+    // Clear previous chat messages
+    chatBox.innerHTML = '';
+    appendMessage("System", `You are now chatting with ${currentChatPartner}.`, 'info');
 
-  if (!searchUsername) {
-    searchMessage.textContent = "Please enter a username to search.";
-    return;
-  }
+    // Display chat history if available
+    if (data.history && data.history.length > 0) {
+        appendMessage("System", "Loading chat history...", 'info');
+        const privateKey = await importPrivateKey(privateKeyPem);
+        for (const msg of data.history) {
+            let decryptedMessage;
+            try {
+                decryptedMessage = await decryptMessage(msg.message, privateKey);
+            } catch (e) {
+                decryptedMessage = "[Decryption Failed]";
+                console.error("Failed to decrypt history message:", e);
+            }
 
-  if (searchUsername === currentUser) {
-      searchMessage.textContent = "You cannot chat with yourself.";
-      return;
-  }
-
-  fetch(`${BASE_URL}/search_user?query=${encodeURIComponent(searchUsername)}`) // ✅ Encode URI component
-    .then(res => res.json())
-    .then(data => {
-      if (data.success && data.user) { // Check for data.user object
-        if (data.user.is_online) {
-          socket.emit("send_chat_request", {
-            from_user: currentUser, // Use current user here
-            to_user: data.user.username // Use the exact username returned from backend
-          });
-          searchMessage.textContent = `📨 Request sent to ${data.user.username}! Waiting for approval...`;
-          chattingWith = data.user.username;
-        } else {
-          searchMessage.textContent = `❌ ${data.user.username} is registered but currently offline.`;
+            if (msg.sender === currentUser) {
+                appendMessage("You", decryptedMessage, 'sent');
+            } else {
+                appendMessage(msg.sender, decryptedMessage, 'received');
+            }
         }
-      } else {
-        searchMessage.textContent = data.message || "❌ User not found."; // Display backend message or default
-      }
-    })
-    .catch(error => {
-      console.error("Error searching user:", error);
-      searchMessage.textContent = "Error searching user.";
+    } else {
+        appendMessage("System", "No chat history found for this conversation.", 'info');
+    }
+});
+
+socket.on('receive_message', async (data) => {
+    console.log("Received encrypted message:", data);
+    if (data.room === currentChatRoom && data.sender === currentChatPartner) {
+        try {
+            const privateKey = await importPrivateKey(privateKeyPem);
+            const decryptedMessage = await decryptMessage(data.message, privateKey);
+            appendMessage(data.sender, decryptedMessage, 'received');
+        } catch (error) {
+            console.error("Error decrypting received message:", error);
+            appendMessage(data.sender, "[Encrypted Message - Decryption Error]", 'error');
+        }
+    } else {
+        console.log(`Received message for a different room or sender. Room: ${data.room}, Sender: ${data.sender}`);
+        // Optionally, add a notification for messages from other chats
+        appendMessage("System", `New message from ${data.sender}. Select them to view.`, 'info');
+        // You might want to update the UI to highlight the friend who sent a new message
+        const friendItem = document.querySelector(`.friend-item[data-username="${data.sender}"]`);
+        if (friendItem && !friendItem.classList.contains('active-chat')) {
+            friendItem.classList.add('new-message-indicator'); // Add a class for visual notification
+        }
+    }
+});
+
+socket.on('online_users', (onlineUsers) => {
+    console.log("Updated online users:", onlineUsers);
+    updateFriendOnlineStatus(onlineUsers);
+});
+
+socket.on('user_disconnected', (data) => {
+    console.log(`${data.username} disconnected.`);
+    const friendItem = document.querySelector(`.friend-item[data-username="${data.username}"]`);
+    if (friendItem) {
+        friendItem.classList.remove('online');
+        friendItem.classList.add('offline');
+    }
+});
+
+// --- Chat Functions ---
+
+async function fetchFriends() {
+    try {
+        const res = await fetch(`${BASE_URL}/friends?username=${currentUser}`);
+        const data = await res.json();
+
+        const friendsListUl = friendsContainer.querySelector('ul');
+        friendsListUl.innerHTML = ''; // Clear existing friends
+
+        if (data.friends && data.friends.length > 0) {
+            noFriendsMessage.style.display = 'none';
+            data.friends.forEach(friend => {
+                addFriendToList(friend.username, friend.status, friend.publicKey);
+            });
+            updateFriendOnlineStatus(socket.onlineUsers || []); // Update initial status
+        } else {
+            noFriendsMessage.style.display = 'block';
+        }
+
+        // Handle pending requests separately if necessary (or integrate into friends list)
+        if (data.pendingRequests && data.pendingRequests.length > 0) {
+            data.pendingRequests.forEach(sender => {
+                // Check if already displayed to prevent duplicates on re-fetch
+                if (!document.getElementById(`request-${sender}`)) {
+                    const friendRequestElement = document.createElement("li");
+                    friendRequestElement.id = `request-${sender}`;
+                    friendRequestElement.classList.add("friend-item", "request");
+                    friendRequestElement.innerHTML = `
+                        <span>${sender} (Pending Request)</span>
+                        <div>
+                            <button onclick="acceptFriendRequest('${sender}')" style="background-color: #28a745; width: auto; margin: 0 5px;">Accept</button>
+                            <button onclick="rejectFriendRequest('${sender}')" style="background-color: #dc3545; width: auto; margin: 0 5px;">Reject</button>
+                        </div>
+                    `;
+                    friendsListUl.prepend(friendRequestElement);
+                    noFriendsMessage.style.display = 'none';
+                }
+            });
+        }
+    } catch (error) {
+        console.error("Error fetching friends:", error);
+        appendMessage("System", "Failed to load friends.", 'error');
+    }
+}
+
+function addFriendToList(friendUsername, status = 'offline', publicKeyPemString) {
+    const friendsListUl = friendsContainer.querySelector('ul');
+    let friendItem = document.querySelector(`.friend-item[data-username="${friendUsername}"]`);
+
+    if (!friendItem) { // Only create if it doesn't exist
+        friendItem = document.createElement("li");
+        friendItem.classList.add("friend-item");
+        friendItem.setAttribute("data-username", friendUsername);
+        friendItem.innerHTML = `<span>${friendUsername}</span>`;
+        friendItem.addEventListener('click', () => selectFriend(friendUsername));
+        friendsListUl.appendChild(friendItem);
+    }
+
+    // Update status classes
+    friendItem.classList.remove('online', 'offline', 'request'); // Remove all status classes first
+    friendItem.classList.add(status);
+
+    // Cache public key (if provided)
+    if (publicKeyPemString) {
+        importPublicKey(publicKeyPemString)
+            .then(publicKeyObj => {
+                friendPublicKeys[friendUsername] = publicKeyObj;
+                console.log(`Cached public key for ${friendUsername}`);
+            })
+            .catch(error => console.error(`Error importing public key for ${friendUsername}:`, error));
+    }
+}
+
+function updateFriendOnlineStatus(onlineUsers) {
+    const friendItems = document.querySelectorAll('.friend-item');
+    friendItems.forEach(item => {
+        const username = item.getAttribute('data-username');
+        if (username) { // Ensure it's a friend item, not a request item
+            if (onlineUsers.includes(username)) {
+                item.classList.add('online');
+                item.classList.remove('offline');
+            } else {
+                item.classList.add('offline');
+                item.classList.remove('online');
+            }
+        }
     });
 }
 
-async function generateAndSendAesKey(recipientUsername) {
-  try {
-    const newAesKey = await AesEncryption.generateRandomAesKey();
-    currentChatKey = newAesKey;
 
-    const recipientPublicKey = await fetchPublicKey(recipientUsername);
-    if (!recipientPublicKey) {
-      displayChatMessage("❌ Could not get recipient's public key to exchange AES key.", 'error');
-      currentChatKey = null;
-      return;
+function selectFriend(friendUsername) {
+    // Remove 'active-chat' class from previously selected friend
+    const activeFriend = document.querySelector('.friend-item.active-chat');
+    if (activeFriend) {
+        activeFriend.classList.remove('active-chat');
     }
 
-    const encoder = new TextEncoder();
-    const encryptedAesKeyBuffer = await window.crypto.subtle.encrypt(
-      { name: "RSA-OAEP" },
-      recipientPublicKey,
-      encoder.encode(newAesKey)
-    );
-    const encryptedAesKeyBase64 = btoa(String.fromCharCode(...new Uint8Array(encryptedAesKeyBuffer)));
+    // Add 'active-chat' class to the newly selected friend
+    const selectedFriendElement = document.querySelector(`.friend-item[data-username="${friendUsername}"]`);
+    if (selectedFriendElement) {
+        selectedFriendElement.classList.add('active-chat');
+        selectedFriendElement.classList.remove('new-message-indicator'); // Clear new message indicator
+    }
 
-    socket.emit('send_aes_key_encrypted', {
-      from_user: username,
-      to_user: recipientUsername,
-      encrypted_aes_key: encryptedAesKeyBase64
-    });
+    console.log(`Selected friend: ${friendUsername}`);
+    // Request to initiate chat (backend will handle room creation/retrieval)
+    socket.emit('request_chat', { sender: currentUser, receiver: friendUsername });
+}
 
-    displayChatMessage(`🔑 Initiated secure key exchange with ${recipientUsername}.`, 'info');
+async function searchUser() {
+    const searchUsername = document.getElementById("searchUser").value.trim();
+    if (!searchUsername) {
+        displaySearchMessage("Please enter a username to search.", true);
+        return;
+    }
+    if (searchUsername === currentUser) {
+        displaySearchMessage("You cannot search for yourself.", true);
+        return;
+    }
+    console.log(`Searching for user: ${searchUsername}`);
+    socket.emit('search_user', { username: searchUsername });
+}
 
-  } catch (error) {
-    console.error("❌ Error during AES key generation/encryption/sending:", error);
-    displayChatMessage("❌ Failed to initiate secure key exchange.", 'error');
-    currentChatKey = null;
-  }
+function acceptFriendRequest(senderUsername) {
+    console.log(`Accepting request from: ${senderUsername}`);
+    socket.emit('accept_friend_request', { acceptor: currentUser, requester: senderUsername });
+    // Remove the request element from the UI immediately
+    const requestElement = document.getElementById(`request-${senderUsername}`);
+    if (requestElement) {
+        requestElement.remove();
+    }
+    fetchFriends(); // Re-fetch friends to update the list with the new friend
+}
+
+function rejectFriendRequest(senderUsername) {
+    console.log(`Rejecting request from: ${senderUsername}`);
+    socket.emit('reject_friend_request', { rejecter: currentUser, requester: senderUsername });
+    // Remove the request element from the UI immediately
+    const requestElement = document.getElementById(`request-${senderUsername}`);
+    if (requestElement) {
+        requestElement.remove();
+    }
+    if (friendsContainer.querySelector('ul').children.length === 0) {
+        noFriendsMessage.style.display = 'block';
+    }
 }
 
 async function sendMessage() {
-  const message = messageInput.value;
-  if (!message.trim() || !currentRoom || !chattingWith) {
-    displayChatMessage("Please type a message and ensure you are in a chat.", 'info');
-    return;
-  }
+    const message = messageInput.value.trim();
+    if (!message || !currentChatPartner || !currentChatRoom) {
+        appendMessage("System", "Please select a friend to chat with and type a message.", 'error');
+        return;
+    }
 
-  if (!currentChatKey) {
-    displayChatMessage("❌ No secure chat key established. Messages cannot be sent encrypted.", 'error');
-    return;
-  }
+    if (!friendPublicKeys[currentChatPartner]) {
+        appendMessage("System", `Public key for ${currentChatPartner} not found. Cannot encrypt message.`, 'error');
+        console.error(`Public key missing for ${currentChatPartner}`);
+        return;
+    }
 
-  try {
-    const encryptedBase64 = await AesEncryption.encrypt(message, currentChatKey);
+    try {
+        // Encrypt message for the recipient
+        const encryptedMessageForReceiver = await encryptMessage(message, friendPublicKeys[currentChatPartner]);
+        console.log("Encrypted for receiver (first 50 chars):", encryptedMessageForReceiver.substring(0, 50) + '...');
 
-    displayChatMessage(`You: ${message}`, 'sent');
+        // Encrypt message for self (for chat history storage)
+        const privateKeyObj = await importPrivateKey(privateKeyPem);
+        const publicKeyFromPrivate = await window.crypto.subtle.exportKey("spki", privateKeyObj.publicKey); // Re-export public key from private
+        const publicKeySelf = await importPublicKey(btoa(String.fromCharCode(...new Uint8Array(publicKeyFromPrivate)))); // Import it as a CryptoKey
+        const encryptedMessageForSelf = await encryptMessage(message, publicKeySelf);
+        console.log("Encrypted for self (first 50 chars):", encryptedMessageForSelf.substring(0, 50) + '...');
 
-    socket.emit("send_message", {
-      from_user: username,
-      to_user: chattingWith,
-      message: encryptedBase64,
-      room: currentRoom
-    });
+        socket.emit('send_message', {
+            sender: currentUser,
+            receiver: currentChatPartner,
+            room: currentChatRoom,
+            messageForReceiver: encryptedMessageForReceiver,
+            messageForSelf: encryptedMessageForSelf // Store encrypted for self for history
+        });
 
-    messageInput.value = "";
-  } catch (error) {
-    console.error("❌ Message encryption/sending failed:", error);
-    displayChatMessage("❌ Failed to send message: " + error.message, 'error');
-  }
+        appendMessage("You", message, 'sent');
+        messageInput.value = ""; // Clear input after sending
+    } catch (error) {
+        console.error("Error sending message:", error);
+        appendMessage("System", "Failed to send message due to encryption error.", 'error');
+    }
 }
+
+// Event listener for Enter key to send message
+messageInput.addEventListener('keypress', function (e) {
+    if (e.key === 'Enter') {
+        sendMessage();
+    }
+});
