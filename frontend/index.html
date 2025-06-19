@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html>
 <head>
@@ -8,22 +9,11 @@
 <body>
     <div class="auth-container">
         <h2>SecureChat</h2>
-
-        <h3>Login</h3>
-        <input type="text" id="loginUsername" placeholder="Username" required />
-        <input type="password" id="loginPin" placeholder="PIN" required />
+        <input type="text" id="anonymousId" placeholder="Enter Username" required />
+        <input type="password" id="securePin" placeholder="Enter PIN" required />
+        <button onclick="registerUser()">Register</button>
         <button onclick="loginUser()">Login</button>
-        <p id="loginMessage" class="auth-message"></p>
-
-
-        <h3>Register New Account</h3>
-        <input type="text" id="registerUsernameOTP" placeholder="Choose Username" required>
-        <input type="password" id="registerPinOTP" placeholder="Set PIN" required minlength="4">
-        <button type="button" id="sendOtpBtn">Send OTP</button>
-        <input type="text" id="otpInput" placeholder="Enter OTP" disabled>
-        <button type="button" id="verifyAndRegisterBtn" disabled>Verify OTP & Register</button>
-        <p id="otpMessage" class="auth-message"></p>
-
+        <p id="authMessage"></p>
     </div>
 
     <script src="script.js"></script>
