@@ -15,17 +15,26 @@ from pymongo.server_api import ServerApi
 from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
 
-# Import the AesEncryption and RSAEncryption classes from your encryption.py
-# Assuming encryption.py is in the same directory and contains necessary classes
+# --- IMPORTANT: Import encryption classes from encryption.py ---
+# This ensures a single, consistent implementation of AES and RSA.
 try:
     from encryption import AesEncryption, RSAEncryption
 except ImportError:
-    print("WARNING: encryption.py not found or classes missing. RSA/AES functionality might be impaired.")
+    print("CRITICAL ERROR: encryption.py not found or classes missing. RSA/AES functionality will be impaired.")
     # Define dummy classes if encryption.py is missing to prevent crash during Flask startup
-    class AesEncryption: # Placeholder to prevent errors
-        pass
-    class RSAEncryption: # Placeholder to prevent errors
-        pass
+    # In a production environment, this should lead to app termination or a more robust fallback
+    class AesEncryption:
+        @staticmethod
+        def encrypt(message, key): raise NotImplementedError("AES encryption not available.")
+        @staticmethod
+        def decrypt(encrypted_message, key): raise NotImplementedError("AES decryption not available.")
+    class RSAEncryption:
+        @staticmethod
+        def generate_keys(): raise NotImplementedError("RSA key generation not available.")
+        @staticmethod
+        def encrypt_with_public_key(message: str, public_key_str: str) -> str: raise NotImplementedError("RSA encryption not available.")
+        @staticmethod
+        def decrypt_with_private_key(encrypted_message_b64: str, private_key_str: str) -> str: raise NotImplementedError("RSA decryption not available.")
 
 
 # Load environment variables from .env file
@@ -135,7 +144,7 @@ def search_user():
             "message": "User found." if is_online else "User found but currently offline."
         })
     else:
-        return jsonify({"success": False, "message": "User not found.", "user": None})
+        return jsonify({"success": False, "message": "User not found."}), 404 # Changed to 404 status
 
 @app.route('/register', methods=['POST'])
 def register():
@@ -176,7 +185,7 @@ def get_public_key():
     if not username:
         return jsonify({"success": False, "message": "Username required"}), 400
 
-    user = users_collection.find_one({"username": username}, {"_id": 0, "public_key": 1})
+    user = users_collection.find_one({"username": username.strip()}, {"_id": 0, "public_key": 1}) # Ensure stripped for lookup
     if user:
         return jsonify({"success": True, "public_key": user["public_key"]})
     return jsonify({"success": False, "message": "User not found"}), 404
@@ -414,7 +423,7 @@ def _send_message_background(from_user, to_user, encrypted_message, room, sender
             "to_user": to_user,
             "message": encrypted_message, # Store the encrypted message
             "room": room,
-            "timestamp": datetime.datetime.utcnow(),
+            "timestamp": datetime.datetime.utcnow(), # Use proper datetime
             "last_seen": None
         })
         print(f"💬 Encrypted message from {from_user} to {to_user} in room {room} stored.")
@@ -437,7 +446,7 @@ def handle_send_message(data):
     if not all([from_user, message, room]):
         emit('error', {'message': 'Missing from_user, message, or room in send_message.'}, room=request.sid)
         return
-    
+
     # NEW LOG: Log the encrypted message received by the backend
     print(f"✉️ Backend received encrypted message from {from_user} (first 50 chars): {message[:50]}...")
 
@@ -469,4 +478,7 @@ def apply_cors(response):
 
 # --- Run the application ---
 if __name__ == '__main__':
+    # Run the SocketIO server.
+    # debug=True is useful for development, disable in production.
+    # allow_unsafe_werkzeug=True is sometimes needed for the reloader with eventlet.
     socketio.run(app, host='0.0.0.0', port=PORT, debug=DEBUG_MODE, allow_unsafe_werkzeug=True)
