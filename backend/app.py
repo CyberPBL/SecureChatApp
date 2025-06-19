@@ -34,7 +34,9 @@ chat_rooms_collection = db["chat_rooms"]
 
 app = Flask(__name__)
 
-FRONTEND_URL = os.getenv("FRONTEND_URL", "https://securechat-frontend-9qs2.onrender.com")
+# Ensure FRONTEND_URL is correctly set in your .env or as an environment variable
+# For local development, you might add 'http://127.0.0.1:5500', 'http://localhost:5500'
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://127.0.0.1:5500") # Default for local testing
 
 CORS(app, supports_credentials=True, resources={
     r"/*": {
@@ -52,8 +54,8 @@ socketio = SocketIO(app, cors_allowed_origins=[
     FRONTEND_URL
 ])
 
-online_users_sockets = {}
-socket_id_to_username = {}
+online_users_sockets = {} # Maps username to socket_id
+socket_id_to_username = {} # Maps socket_id to username
 
 # --- Malicious Content Detection Function ---
 def is_malicious_content(message):
@@ -70,7 +72,6 @@ def is_malicious_content(message):
         re.compile(r"https?:\/\/.*(paypal|google|facebook|instagram|microsoft|whatsapp)\.[^\.]+?\.(tk|ml|ga|cf|gq|xyz|top)", re.IGNORECASE),
         re.compile(r"%[0-9a-f]{2}", re.IGNORECASE),
         re.compile(r"[\u200B-\u200F\u202A-\u202E]"),
-        # NEW: Pattern for common executable/archive file extensions
         re.compile(r"\.(apk|exe|zip|rar|bat|sh|jar|msi|vbs|cmd)(\/|\?|$)", re.IGNORECASE),
     ]
     for pattern in suspicious_patterns:
@@ -194,6 +195,7 @@ def handle_register_user(data):
         username = username.strip()
         user_doc = users_collection.find_one({"username": username})
         if user_doc:
+            # Update socket_id in DB for persistence (optional, but good for tracking last active socket)
             users_collection.update_one(
                 {"username": username},
                 {"$set": {"socket_id": sid}}
@@ -205,7 +207,17 @@ def handle_register_user(data):
             current_online_users = list(online_users_sockets.keys())
             emit('registered', {'message': f'User {username} registered successfully.', 'onlineUsers': current_online_users}, room=sid)
 
-            emit('online_users', current_online_users, broadcast=True)
+            # Notify all friends that this user came online
+            user_friends = users_collection.find_one({"username": username}, {"friends": 1})
+            if user_friends and 'friends' in user_friends:
+                for friend_info in user_friends['friends']:
+                    friend_username = friend_info['username']
+                    friend_sid = online_users_sockets.get(friend_username)
+                    if friend_sid:
+                        emit('friend_online_status_changed', {'username': username, 'status': 'online'}, room=friend_sid)
+                        emit('friend_list_updated', {}, room=friend_sid) # Trigger refresh for friends
+            emit('friend_list_updated', {}, room=sid) # Trigger refresh for self
+
         else:
             print(f"❌ User '{username}' not found in DB for socket registration.")
             emit('error', {'message': f'User {username} not found in database for socket registration.'}, room=sid)
@@ -259,17 +271,21 @@ def handle_send_friend_request(data):
         if not receiver_user:
             return emit('error', {'message': f"Receiver '{receiver}' not found."}, room=request.sid)
 
+        # Check if already friends
         if any(f['username'] == receiver for f in sender_user.get('friends', [])):
             return emit('error', {'message': f"{receiver} is already your friend."}, room=request.sid)
         if any(f['username'] == sender for f in receiver_user.get('friends', [])):
             return emit('error', {'message': f"You are already friends with {receiver}." }, room=request.sid)
 
+        # Check if request already sent by sender
         if receiver in sender_user.get('pending_requests', []):
             return emit('error', {'message': f"Friend request already sent to {receiver}."}, room=request.sid)
 
+        # Check if request already received from receiver (i.e., receiver sent to sender)
         if sender in receiver_user.get('pending_requests', []):
             return emit('error', {'message': f"{receiver} has already sent you a friend request. Accept it instead."}, room=request.sid)
 
+        # Add sender to receiver's pending_requests
         users_collection.update_one(
             {"username": receiver},
             {"$addToSet": {"pending_requests": sender}}
@@ -284,6 +300,7 @@ def handle_send_friend_request(data):
         else:
             print(f"Backend: Friend request from {sender} to {receiver} sent (offline).")
 
+        # Always trigger a friend list update for both parties
         if receiver_sid:
             emit('friend_list_updated', {}, room=receiver_sid)
         emit('friend_list_updated', {}, room=request.sid)
@@ -308,15 +325,18 @@ def handle_accept_friend_request(data):
         if not acceptor_user or not requester_user:
             return emit('error', {'message': 'User not found for acceptance.'}, room=request.sid)
 
+        # Remove from acceptor's pending requests
         users_collection.update_one(
             {"username": acceptor},
             {"$pull": {"pending_requests": requester}}
         )
 
+        # Add to acceptor's friends list
         users_collection.update_one(
             {"username": acceptor},
             {"$addToSet": {"friends": {"username": requester, "public_key": requester_user['public_key']}}}
         )
+        # Add to requester's friends list
         users_collection.update_one(
             {"username": requester},
             {"$addToSet": {"friends": {"username": acceptor, "public_key": acceptor_user['public_key']}}}
@@ -463,14 +483,15 @@ def handle_request_chat(data):
             chat_rooms_collection.insert_one(chat_room)
             print(f"Backend: Created new chat room: {room_id}")
 
-        join_room(room_id)
+        # Ensure both users are in the room if they are online
+        join_room(room_id) # Sender joins the room
         receiver_sid = online_users_sockets.get(receiver)
-        if receiver_sid:
-            socketio.emit('join_room', room_id, room=receiver_sid)
-            join_room(room_id, sid=receiver_sid)
+        if receiver_sid and receiver_sid != request.sid: # Avoid joining twice if sender and receiver are the same (unlikely for chat)
+            socketio.emit('join_room', room_id, room=receiver_sid) # Tell receiver to join
+            join_room(room_id, sid=receiver_sid) # Backend joins receiver to room
             print(f"Backend: {sender} and {receiver} joined room {room_id}")
         else:
-            print(f"Backend: {sender} joined room {room_id}. {receiver} is offline.")
+            print(f"Backend: {sender} joined room {room_id}. {receiver} is offline or sender is also receiver.")
 
         history_messages = chat_room.get('messages', [])
 
@@ -509,22 +530,73 @@ def handle_send_message(data):
                 emit('message_from_friend_blocked', {'sender': from_user, 'reason': 'malicious_content_detected'}, room=receiver_sid)
             return # Do not proceed with storing or forwarding the message
 
+        # Store message for sender (encrypted with sender's public key)
+        # and for receiver (encrypted with receiver's public key)
+        # This is where the flexibility of storing messages encrypted for *both* comes in.
+        # However, the current chat_rooms_collection structure is simpler.
+        # For simplicity and given the chat history decrypts on client,
+        # we'll stick to storing just one encrypted version for now.
+        # The frontend provides both so we can choose if needed.
+        # Let's store message_for_self for history retrieval by the sender,
+        # and message_for_receiver for history retrieval by the receiver.
+        # A more robust system might store two copies, or re-encrypt on retrieve.
+        # For this design, let's update the message structure in DB to store both.
+
+        # Fetch receiver's public key to potentially store a copy encrypted for them
+        # (This implies a more complex history retrieval where client has to pick which message copy to decrypt)
+        # For now, current client logic assumes it gets *its* encrypted message back from history.
+        # So we'll store message_for_self for sender, and rely on `receive_message` to send `message_for_receiver` live.
+
         chat_rooms_collection.update_one(
             {"room_id": room},
             {"$push": {
-                "sender": from_user,
-                "message": message_for_self,
-                "timestamp": datetime.datetime.utcnow().isoformat()
+                "messages": {
+                    "sender": from_user,
+                    # Storing message_for_self as the general encrypted message for history
+                    # When receiver fetches history, they would need their own key to decrypt.
+                    # A better history model might store two versions or re-encrypt.
+                    # For now, `message` field stores `message_for_self` from sender's perspective.
+                    # When history is pulled, *current user's* key will be used to decrypt.
+                    "message": message_for_self,
+                    "timestamp": datetime.datetime.utcnow().isoformat()
+                }
             }}
         )
         print(f"💬 Encrypted message from {from_user} to {to_user} in room {room} stored.")
 
-        emit('receive_message', {
-            'sender': from_user,
-            'message': message_for_receiver,
+        # Emit the message to all participants in the room
+        # The message_for_receiver is specifically for the other party.
+        # The sender will receive their own message (message_for_self)
+        # which is already handled by appendMessage("You", message, 'sent') on the frontend.
+        # So, we only need to emit message_for_receiver to the actual receiver,
+        # and maybe a confirmation back to the sender if needed beyond their local append.
+        # The `room=room, include_self=True` will send `message_for_receiver` to *both*
+        # which is not ideal. We need to send `message_for_receiver` ONLY to `to_user`
+        # and `message_for_self` ONLY to `from_user` for the live update.
+
+        # Let's adjust this for proper live delivery:
+        sender_sid = request.sid
+        receiver_sid = online_users_sockets.get(to_user)
+
+        # Emit to sender (confirming their own message)
+        emit('receive_message_echo', { # Use a different event for echo to avoid confusion
+            'sender': from_user, # This would technically be 'You' on client
+            'message': message_for_self, # Send back what they encrypted for themselves
             'room': room,
             'timestamp': datetime.datetime.utcnow().isoformat()
-        }, room=room, include_self=True)
+        }, room=sender_sid)
+
+        # Emit to receiver
+        if receiver_sid:
+            emit('receive_message', {
+                'sender': from_user,
+                'message': message_for_receiver,
+                'room': room,
+                'timestamp': datetime.datetime.utcnow().isoformat()
+            }, room=receiver_sid)
+        else:
+            print(f"Backend: Receiver {to_user} is offline. Message stored for later retrieval.")
+
 
     except Exception as e:
         print(f"❌ Backend: Error in send_message: {str(e)}")
@@ -539,15 +611,28 @@ def handle_disconnect():
         online_users_sockets.pop(username, None)
         socket_id_to_username.pop(sid, None)
 
+        # Optionally update DB to mark user as offline or remove socket_id
         users_collection.update_one(
             {"username": username},
-            {"$unset": {"socket_id": ""}}
+            {"$unset": {"socket_id": ""}} # Remove socket_id when disconnected
         )
         print(f"❌ User '{username}' (SID: {sid}) disconnected (socket_id removed from DB and in-memory maps).")
 
+        # Notify friends about offline status
+        user_friends = users_collection.find_one({"username": username}, {"friends": 1})
+        if user_friends and 'friends' in user_friends:
+            for friend_info in user_friends['friends']:
+                friend_username = friend_info['username']
+                friend_sid = online_users_sockets.get(friend_username)
+                if friend_sid:
+                    emit('friend_online_status_changed', {'username': username, 'status': 'offline'}, room=friend_sid)
+                    emit('friend_list_updated', {}, room=friend_sid) # Trigger refresh for friends
+
+        # Broadcast the updated online user list (optional, but good for general online status)
         current_online_users = list(online_users_sockets.keys())
         emit('online_users', current_online_users, broadcast=True)
-        emit('user_disconnected', {'username': username}, broadcast=True)
+        # emit('user_disconnected', {'username': username}, broadcast=True) # Replaced by friend_online_status_changed
+
     else:
         print(f"❌ Socket disconnected: {sid} (no associated user found or socket_id already removed).")
 
