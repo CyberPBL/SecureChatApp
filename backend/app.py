@@ -1,5 +1,5 @@
 import eventlet
-eventlet.monkey_patch()
+eventlet.monkey_patch() # IMPORTANT: Keep this at the very top!
 
 print("Running app.py")
 
@@ -16,6 +16,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 MONGO_URI = os.getenv("MONGO_URI")
+# PORT is typically handled by Render's internal proxy, so it's not strictly needed here for Gunicorn.
+# But keep it for local development if socketio.run is used.
 PORT = int(os.environ.get("PORT", 8000))
 
 if not MONGO_URI:
@@ -36,22 +38,25 @@ app = Flask(__name__)
 
 # Ensure FRONTEND_URL is correctly set in your .env or as an environment variable
 # For local development, you might add 'http://127.0.0.1:5500', 'http://localhost:5500'
+# On Render, this will be your actual frontend URL (e.g., https://securechat-frontend-9qs2.onrender.com)
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://127.0.0.1:5500") # Default for local testing
 
 CORS(app, supports_credentials=True, resources={
     r"/*": {
         "origins": [
+            "http://172.17.0.1:5500", # Common for Docker/Render internal networking
             "http://127.0.0.1:5500",
             "http://localhost:5500",
-            FRONTEND_URL
+            FRONTEND_URL # This will be the Render frontend URL in production
         ]
     }
 })
 
 socketio = SocketIO(app, cors_allowed_origins=[
+    "http://172.17.0.1:5500", # Common for Docker/Render internal networking
     "http://127.0.0.1:5500",
     "http://localhost:5500",
-    FRONTEND_URL
+    FRONTEND_URL # Same here
 ])
 
 online_users_sockets = {} # Maps username to socket_id
@@ -484,14 +489,19 @@ def handle_request_chat(data):
             print(f"Backend: Created new chat room: {room_id}")
 
         # Ensure both users are in the room if they are online
+        # The join_room on the backend for receiver is important if the receiver is already connected
+        # but hasn't explicitly joined this specific room (e.g., just opened their app)
         join_room(room_id) # Sender joins the room
         receiver_sid = online_users_sockets.get(receiver)
         if receiver_sid and receiver_sid != request.sid: # Avoid joining twice if sender and receiver are the same (unlikely for chat)
-            socketio.emit('join_room', room_id, room=receiver_sid) # Tell receiver to join
-            join_room(room_id, sid=receiver_sid) # Backend joins receiver to room
-            print(f"Backend: {sender} and {receiver} joined room {room_id}")
+            socketio.emit('join_room_request', room_id, room=receiver_sid) # Request receiver to join
+            # You might optionally add join_room(room_id, sid=receiver_sid) here,
+            # but usually, the client handles the join_room on 'chat_approved'.
+            # For simplicity, let client handle it after 'chat_approved'.
+            print(f"Backend: Sent join_room_request to {receiver} for room {room_id}.")
         else:
             print(f"Backend: {sender} joined room {room_id}. {receiver} is offline or sender is also receiver.")
+
 
         history_messages = chat_room.get('messages', [])
 
@@ -530,72 +540,49 @@ def handle_send_message(data):
                 emit('message_from_friend_blocked', {'sender': from_user, 'reason': 'malicious_content_detected'}, room=receiver_sid)
             return # Do not proceed with storing or forwarding the message
 
-        # Store message for sender (encrypted with sender's public key)
-        # and for receiver (encrypted with receiver's public key)
-        # This is where the flexibility of storing messages encrypted for *both* comes in.
-        # However, the current chat_rooms_collection structure is simpler.
-        # For simplicity and given the chat history decrypts on client,
-        # we'll stick to storing just one encrypted version for now.
-        # The frontend provides both so we can choose if needed.
-        # Let's store message_for_self for history retrieval by the sender,
-        # and message_for_receiver for history retrieval by the receiver.
-        # A more robust system might store two copies, or re-encrypt on retrieve.
-        # For this design, let's update the message structure in DB to store both.
-
-        # Fetch receiver's public key to potentially store a copy encrypted for them
-        # (This implies a more complex history retrieval where client has to pick which message copy to decrypt)
-        # For now, current client logic assumes it gets *its* encrypted message back from history.
-        # So we'll store message_for_self for sender, and rely on `receive_message` to send `message_for_receiver` live.
-
+        # Store message for history.
+        # We store the message encrypted for the sender's public key (`message_for_self`).
+        # When fetching history, each client decrypts messages with their *own* private key.
+        # This implies that the original sender's stored message (`message_for_self`)
+        # will be decrypted by the sender's private key to show in their history.
+        # For the receiver's history, a more complex approach is needed if you want to guarantee
+        # they can decrypt *all* messages with their key.
+        # For this design, we assume 'message_for_self' is the version stored,
+        # and client-side decryption handles showing it to the correct user.
+        # If history needs to be universally decryptable by both participants with their own keys,
+        # you'd need to store two encrypted versions, or re-encrypt on retrieval based on who is asking.
+        # Current implementation assumes if a message is for 'self', it's always readable by 'self'.
         chat_rooms_collection.update_one(
             {"room_id": room},
             {"$push": {
-                "messages": {
-                    "sender": from_user,
-                    # Storing message_for_self as the general encrypted message for history
-                    # When receiver fetches history, they would need their own key to decrypt.
-                    # A better history model might store two versions or re-encrypt.
-                    # For now, `message` field stores `message_for_self` from sender's perspective.
-                    # When history is pulled, *current user's* key will be used to decrypt.
-                    "message": message_for_self,
-                    "timestamp": datetime.datetime.utcnow().isoformat()
-                }
+                "sender": from_user,
+                "message": message_for_self, # Store the message encrypted for the sender
+                "timestamp": datetime.datetime.utcnow().isoformat()
             }}
         )
-        print(f"💬 Encrypted message from {from_user} to {to_user} in room {room} stored.")
+        print(f"💬 Encrypted message from {from_user} to {to_user} in room {room} stored for history.")
 
-        # Emit the message to all participants in the room
-        # The message_for_receiver is specifically for the other party.
-        # The sender will receive their own message (message_for_self)
-        # which is already handled by appendMessage("You", message, 'sent') on the frontend.
-        # So, we only need to emit message_for_receiver to the actual receiver,
-        # and maybe a confirmation back to the sender if needed beyond their local append.
-        # The `room=room, include_self=True` will send `message_for_receiver` to *both*
-        # which is not ideal. We need to send `message_for_receiver` ONLY to `to_user`
-        # and `message_for_self` ONLY to `from_user` for the live update.
-
-        # Let's adjust this for proper live delivery:
-        sender_sid = request.sid
+        # Emit the message to the actual receiver if they are online
         receiver_sid = online_users_sockets.get(to_user)
-
-        # Emit to sender (confirming their own message)
-        emit('receive_message_echo', { # Use a different event for echo to avoid confusion
-            'sender': from_user, # This would technically be 'You' on client
-            'message': message_for_self, # Send back what they encrypted for themselves
-            'room': room,
-            'timestamp': datetime.datetime.utcnow().isoformat()
-        }, room=sender_sid)
-
-        # Emit to receiver
         if receiver_sid:
             emit('receive_message', {
                 'sender': from_user,
-                'message': message_for_receiver,
+                'message': message_for_receiver, # This is the message encrypted for the receiver
                 'room': room,
                 'timestamp': datetime.datetime.utcnow().isoformat()
             }, room=receiver_sid)
+            print(f"Backend: Live message sent to {to_user}.")
         else:
-            print(f"Backend: Receiver {to_user} is offline. Message stored for later retrieval.")
+            print(f"Backend: Receiver {to_user} is offline. Message stored for later retrieval (history).")
+
+        # Emit an echo back to the sender for confirmation/sync, if needed
+        # The frontend already does an optimistic append, so this might be redundant for UI.
+        # It's useful if the frontend needs server confirmation before displaying.
+        emit('message_sent_confirmation', {
+            'receiver': to_user,
+            'message_original': original_message_content, # Send back original for sender confirmation
+            'timestamp': datetime.datetime.utcnow().isoformat()
+        }, room=request.sid)
 
 
     except Exception as e:
@@ -636,5 +623,9 @@ def handle_disconnect():
     else:
         print(f"❌ Socket disconnected: {sid} (no associated user found or socket_id already removed).")
 
+
+# This block is ONLY for local development using `python app.py`
+# When deploying with Gunicorn on Render, Gunicorn will run the `app` object directly.
 if __name__ == '__main__':
+    print(f"Running Flask app with socketio.run on port {PORT}")
     socketio.run(app, host='0.0.0.0', port=PORT, debug=True, allow_unsafe_werkzeug=True)
