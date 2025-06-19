@@ -1,26 +1,42 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>SecureChat - Chat</title>
-  <link rel="stylesheet" href="style.css">
-  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <title>SecureChat - Chat</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
 </head>
 <body>
-  <div class="chat-container">
-    <h2>Welcome to SecureChat</h2>
-    <p>Logged in as: <span id="userNameDisplay"></span></p>
 
-    <h3>Start a Chat</h3>
-    <input type="text" id="partnerInput" placeholder="Enter username" />
-    <button id="joinBtn">Join Chat</button>
+    <div class="chat-container">
+        <h2>Welcome to SecureChat</h2>
+        <p>Logged in as: <span id="userNameDisplay"></span></p>
 
-    <h3>Chat Box</h3>
-    <div id="chatBox" class="chat-messages-container"></div>
+        <!-- Friends List Section -->
+        <h3>Your Friends</h3>
+        <div id="friendsContainer" class="friends-list-container">
+            <p id="noFriendsMessage">No approved friends yet. Search for someone to chat!</p>
+        </div>
+        <hr>
 
-    <input id="messageInput" type="text" placeholder="Type a message..." disabled />
-    <button id="sendButton" disabled>Send</button>
-  </div>
+        <!-- User Search Section -->
+        <h3>Search for a user to chat with:</h3>
+        <input type="text" id="searchUser" placeholder="Enter username to search" />
+        <button onclick="searchUser()">Search / Send Request</button>
+        <p id="searchMessage"></p>
 
-  <script src="chat.js"></script>
+        <!-- Chat Box Section -->
+        <h3>Chat Box</h3>
+        <div id="chatBox" class="chat-messages-container" style="height: 300px; overflow-y: auto; border: 1px solid #ccc; padding: 10px; margin-top: 10px;">
+            <!-- Messages will be appended here by JavaScript -->
+        </div>
+
+        <!-- Message Input -->
+        <input id="messageInput" type="text" placeholder="Type a message..." disabled />
+        <button id="sendButton" onclick="sendMessage()" disabled>Send</button>
+    </div>
+
+    <!-- Load Chat Script -->
+    <script src="chat.js"></script>
+
 </body>
 </html>
