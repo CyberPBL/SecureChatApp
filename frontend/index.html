@@ -1,25 +1,20 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8">
-  <title>SecureChat - Login/Register</title>
+    <title>SecureChat - Login/Register</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
 </head>
 <body>
-  <h2>Secure Chat Authentication</h2>
+    <div class="auth-container">
+        <h2>SecureChat</h2>
+        <input type="text" id="anonymousId" placeholder="Enter Username" required />
+        <input type="password" id="securePin" placeholder="Enter PIN" required />
+        <button onclick="registerUser()">Register</button>
+        <button onclick="loginUser()">Login</button>
+        <p id="authMessage"></p>
+    </div>
 
-  <label for="anonymousId">Username:</label>
-  <input type="text" id="anonymousId" placeholder="Enter your username"><br><br>
-
-  <label for="securePin">PIN:</label>
-  <input type="password" id="securePin" placeholder="Enter secure PIN"><br><br>
-
-  <button onclick="registerUser()">Register</button>
-  <button onclick="loginUser()">Login</button>
-
-  <p id="authMessage"></p>
-
-  <!-- ✅ JS should be loaded last -->
-  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-  <script src="script.js"></script>
+    <script src="script.js"></script>
 </body>
 </html>
