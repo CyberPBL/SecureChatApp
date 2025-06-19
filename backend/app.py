@@ -56,7 +56,7 @@ socketio = SocketIO(app, cors_allowed_origins=[
 online_users_sockets = {}
 socket_id_to_username = {}
 
-# --- NEW: Malicious Content Detection Function ---
+# --- Malicious Content Detection Function ---
 def is_malicious_content(message):
     suspicious_patterns = [
         re.compile(r"https?:\/\/(?:bit\.ly|tinyurl\.com|goo\.gl|t\.co|rb\.gy|is\.gd|shorte\.st|adf\.ly|rebrand\.ly|cutt\.ly|buff\.ly|lnkd\.in|bl\.ink|trib\.al|snip\.ly|shorturl\.at|shrtco\.de|short\.cm|v\.gd|zi\.mu)", re.IGNORECASE),
@@ -71,15 +71,17 @@ def is_malicious_content(message):
         re.compile(r"https?:\/\/.*(paypal|google|facebook|instagram|microsoft|whatsapp)\.[^\.]+?\.(tk|ml|ga|cf|gq|xyz|top)", re.IGNORECASE),
         re.compile(r"%[0-9a-f]{2}", re.IGNORECASE),
         re.compile(r"[\u200B-\u200F\u202A-\u202E]"),
+        # NEW: Pattern for common executable/archive file extensions
+        re.compile(r"\.(apk|exe|zip|rar|bat|sh|jar|msi|vbs|cmd)(\/|\?|$)", re.IGNORECASE),
     ]
     for pattern in suspicious_patterns:
         if pattern.search(message):
             return True
     return False
-# --- END NEW ---
+# --- END Malicious Content Detection Function ---
 
 
-# --- Flask Routes (No changes here from your last provided app.py) ---
+# --- Flask Routes ---
 
 @app.route('/register', methods=['POST'])
 def register():
@@ -178,7 +180,7 @@ def get_friends_list():
         print(f"❌ Backend: Error in /friends route for {username}: {str(e)}")
         return jsonify({"success": False, "message": "Server error fetching friends."}), 500
 
-# --- SocketIO Event Handlers (MODIFIED send_message) ---
+# --- SocketIO Event Handlers ---
 
 @socketio.on('connect')
 def handle_connect():
@@ -436,14 +438,14 @@ def handle_send_message(data):
     room = data.get('room', '').strip()
     message_for_receiver = data.get('messageForReceiver')
     message_for_self = data.get('messageForSelf')
-    original_message_content = data.get('originalMessageContent') # NEW: Unencrypted message content for backend scan
+    original_message_content = data.get('originalMessageContent') # Unencrypted message content for backend scan
 
-    if not all([from_user, to_user, room, message_for_receiver, message_for_self, original_message_content]): # Ensure all are present
+    if not all([from_user, to_user, room, message_for_receiver, message_for_self, original_message_content]):
         print(f"Backend: send_message missing data: {data}")
         return emit('error', {'message': 'Missing data in send_message.'}, room=request.sid)
 
     try:
-        # --- NEW: Backend malicious content check ---
+        # Backend malicious content check
         if is_malicious_content(original_message_content):
             print(f"🚨 Malicious content detected from {from_user} to {to_user}. Message blocked.")
             emit('message_blocked', {'reason': 'malicious_content_detected'}, room=request.sid)
@@ -452,7 +454,6 @@ def handle_send_message(data):
             if receiver_sid:
                 emit('message_from_friend_blocked', {'sender': from_user, 'reason': 'malicious_content_detected'}, room=receiver_sid)
             return # Do not proceed with storing or forwarding the message
-        # --- END NEW ---
 
         chat_rooms_collection.update_one(
             {"room_id": room},
