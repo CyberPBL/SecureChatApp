@@ -4,9 +4,8 @@ eventlet.monkey_patch()
 print("Running app.py")
 
 import os
-import base64
 import datetime
-import re # Import the re module for regular expressions
+import re
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit, join_room, leave_room
@@ -35,7 +34,7 @@ chat_rooms_collection = db["chat_rooms"]
 
 app = Flask(__name__)
 
-FRONTEND_URL = os.getenv("FRONTEND_URL", "https://securechat-frontend-9qs2.onrender.com") # Use an environment variable for safety
+FRONTEND_URL = os.getenv("FRONTEND_URL", "https://securechat-frontend-9qs2.onrender.com")
 
 CORS(app, supports_credentials=True, resources={
     r"/*": {
@@ -377,6 +376,61 @@ def handle_reject_friend_request(data):
         print(f"❌ Backend: Error in reject_friend_request: {str(e)}")
         emit('error', {'message': 'Server error rejecting friend request.'}, room=request.sid)
 
+@socketio.on('unfriend_user')
+def handle_unfriend_user(data):
+    unfriender = data.get('unfriender', '').strip()
+    unfriended = data.get('unfriended', '').strip()
+    print(f"Backend: Received unfriend_user request: {unfriender} unfriending {unfriended}")
+
+    if not unfriender or not unfriended:
+        return emit('error', {'message': 'Unfriender or unfriended user missing.'}, room=request.sid)
+    if unfriender == unfriended:
+        return emit('error', {'message': 'Cannot unfriend yourself.'}, room=request.sid)
+
+    try:
+        # Remove unfriended from unfriender's friend list
+        result1 = users_collection.update_one(
+            {"username": unfriender},
+            {"$pull": {"friends": {"username": unfriended}}}
+        )
+
+        # Remove unfriender from unfriended's friend list
+        result2 = users_collection.update_one(
+            {"username": unfriended},
+            {"$pull": {"friends": {"username": unfriender}}}
+        )
+
+        # Optional: Delete chat room messages (uncomment if you want to clear history upon unfriend)
+        # participants_sorted = sorted([unfriender, unfriended])
+        # room_id = "_".join(participants_sorted)
+        # chat_rooms_collection.delete_one({"room_id": room_id})
+        # print(f"Backend: Chat room {room_id} deleted (optional).")
+
+
+        if result1.modified_count > 0 or result2.modified_count > 0:
+            emit('unfriended_success', {'unfriendedUser': unfriended}, room=request.sid)
+            print(f"Backend: {unfriender} successfully unfriended {unfriended}.")
+
+            # Notify the unfriended user if they are online
+            unfriended_sid = online_users_sockets.get(unfriended)
+            if unfriended_sid:
+                emit('you_were_unfriended', {'unfriender': unfriender}, room=unfriended_sid)
+                print(f"Backend: Notified {unfriended} they were unfriended by {unfriender}.")
+
+            # Trigger friend list update for both parties
+            emit('friend_list_updated', {}, room=request.sid)
+            if unfriended_sid:
+                emit('friend_list_updated', {}, room=unfriended_sid)
+
+        else:
+            emit('error', {'message': f"Could not unfriend {unfriended}. Perhaps not friends."}, room=request.sid)
+            print(f"Backend: Unfriend failed: {unfriender} not friends with {unfriended} or already unfriended.")
+
+    except Exception as e:
+        print(f"❌ Backend: Error in unfriend_user: {str(e)}")
+        emit('error', {'message': 'Server error unfriending user.'}, room=request.sid)
+
+
 @socketio.on('request_chat')
 def handle_request_chat(data):
     sender = data.get('sender', '').strip()
@@ -458,11 +512,9 @@ def handle_send_message(data):
         chat_rooms_collection.update_one(
             {"room_id": room},
             {"$push": {
-                "messages": {
-                    "sender": from_user,
-                    "message": message_for_self,
-                    "timestamp": datetime.datetime.utcnow().isoformat()
-                }
+                "sender": from_user,
+                "message": message_for_self,
+                "timestamp": datetime.datetime.utcnow().isoformat()
             }}
         )
         print(f"💬 Encrypted message from {from_user} to {to_user} in room {room} stored.")
