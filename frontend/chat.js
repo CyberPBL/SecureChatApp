@@ -246,6 +246,16 @@ socket.on('friend_list_updated', async () => {
     await fetchFriends();
 });
 
+socket.on('join_room_request', (room_id) => {
+    // If the server tells the client to join a room, respond
+    // This is useful for the receiving side of a chat initiation
+    console.log(`Received join_room_request for room: ${room_id}`);
+    // No explicit client-side join needed here for Socket.IO itself;
+    // the chat_approved event later will handle the UI and context.
+    // The server-side `join_room` is what truly connects the SID to the room.
+});
+
+
 socket.on('chat_approved', async (data) => {
     console.log(`Chat approved with: ${data.partner} in room: ${data.room}`);
     currentChatPartner = data.partner;
@@ -267,7 +277,8 @@ socket.on('chat_approved', async (data) => {
             let decryptedMessage;
             try {
                 // History messages are stored encrypted with sender's public key (own public key for sender)
-                // So, to decrypt history, we use OUR private key.
+                // So, to decrypt history, we use OUR private key, because when *we* sent it, it was encrypted for us.
+                // When we *received* it, it was also encrypted for us.
                 decryptedMessage = await decryptMessage(msg.message, privateKey);
             } catch (e) {
                 decryptedMessage = "[Could not decrypt message]";
@@ -277,8 +288,6 @@ socket.on('chat_approved', async (data) => {
             if (msg.sender === currentUser) {
                 appendMessage("You", decryptedMessage, 'sent');
             } else {
-                // For received messages in history, they were encrypted with YOUR public key by the sender
-                // so your private key will decrypt them correctly.
                 appendMessage(msg.sender, decryptedMessage, 'received');
             }
         }
@@ -319,12 +328,10 @@ socket.on('receive_message', async (data) => {
     }
 });
 
-// Event for messages echoed back to the sender (for their own live display)
-socket.on('receive_message_echo', async (data) => {
-    // The sender already appended their message via appendMessage("You", message, 'sent');
-    // This echo can be used for confirmation or to correct if the client-side append was wrong.
-    // For now, we'll log it, but the existing appendMessage('You', ...) handles the display.
-    console.log("Received message echo from server:", data);
+// Event for confirmation that message was sent (less crucial for UI as we optimistically append)
+socket.on('message_sent_confirmation', (data) => {
+    console.log("Message sent confirmation from server:", data);
+    // You could use this to update message status (e.g., delivered tick)
 });
 
 
