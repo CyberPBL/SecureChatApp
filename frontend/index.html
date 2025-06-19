@@ -1,33 +1,18 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Secure Chat - Auth</title>
-    <link rel="stylesheet" href="style.css"> </head>
+    <title>SecureChat - Login/Register</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+</head>
 <body>
-    <div class="container">
-        <h1>Secure Chat</h1>
-
-        <div id="message" style="margin-bottom: 15px;"></div>
-
-        <div class="auth-section">
-            <h2>Register</h2>
-            <form id="registerForm">
-                <input type="text" id="registerUsername" placeholder="Username" required>
-                <input type="password" id="registerPin" placeholder="PIN" required minlength="4">
-                <button type="submit">Register</button>
-            </form>
-        </div>
-
-        <div class="auth-section">
-            <h2>Login</h2>
-            <form id="loginForm">
-                <input type="text" id="loginUsername" placeholder="Username" required>
-                <input type="password" id="loginPin" placeholder="PIN" required minlength="4">
-                <button type="submit">Login</button>
-            </form>
-        </div>
+    <div class="auth-container">
+        <h2>SecureChat</h2>
+        <input type="text" id="anonymousId" placeholder="Enter Username" required />
+        <input type="password" id="securePin" placeholder="Enter PIN" required />
+        <button onclick="registerUser()">Register</button>
+        <button onclick="loginUser()">Login</button>
+        <p id="authMessage"></p>
     </div>
 
     <script src="script.js"></script>
