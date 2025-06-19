@@ -1,418 +1,198 @@
-/* Basic Reset & Body Styles */
 body {
-    margin: 0;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background-color: #222;
-    color: #eee;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    min-height: 100vh;
-    padding: 20px;
-    box-sizing: border-box;
+  margin: 0;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: #0d1117; /* Dark background */
+  color: #c9d1d9; /* Light text */
 }
 
-/* Auth Container */
-.auth-container {
-    background-color: #333;
-    padding: 30px;
-    border-radius: 10px;
-    box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
-    text-align: center;
-    width: 100%;
-    max-width: 400px;
+.container, .chat-container, .auth-container { /* Added .auth-container */
+  max-width: 500px;
+  margin: 60px auto;
+  padding: 30px;
+  background: #161b22; /* Darker container background */
+  border-radius: 16px;
+  box-shadow: 0 0 20px rgba(0, 170, 255, 0.4); /* Blue glow */
 }
 
-.auth-container h2 {
-    color: #007bff;
-    margin-bottom: 20px;
+h1, h2, h3 {
+  color: #58a6ff; /* Accent blue for headings */
+  text-align: center;
 }
 
-.auth-tabs {
-    display: flex;
-    justify-content: center;
-    margin-bottom: 20px;
+input, button {
+  width: 100%;
+  padding: 12px;
+  margin: 10px 0;
+  border-radius: 10px;
+  border: none;
+  font-size: 16px;
+  box-sizing: border-box; /* Ensures padding doesn't push elements out of their width */
 }
 
-.auth-tab-btn {
-    background-color: #555;
-    color: white;
-    border: none;
-    padding: 10px 20px;
-    cursor: pointer;
-    font-size: 1em;
-    border-radius: 5px;
-    margin: 0 5px;
-    transition: background-color 0.3s ease;
+input {
+  background-color: #0d1117; /* Even darker input background */
+  color: #c9d1d9;
+  border: 1px solid #30363d; /* Darker border */
 }
 
-.auth-tab-btn.active {
-    background-color: #007bff;
+button {
+  background: #238636; /* GitHub-like green for buttons */
+  color: white;
+  font-weight: bold;
+  transition: background 0.3s ease;
 }
 
-.auth-tab-btn:hover:not(.active) {
-    background-color: #666;
+button:hover {
+  background: #2ea043; /* Lighter green on hover */
 }
 
-.auth-form {
-    display: none;
-}
-
-.auth-form.active {
-    display: block;
-}
-
-.auth-form input[type="text"],
-.auth-form input[type="password"] {
-    width: calc(100% - 20px);
-    padding: 10px;
-    margin: 10px 0;
-    border: 1px solid #555;
-    border-radius: 5px;
-    background-color: #444;
-    color: #eee;
-}
-
-.auth-form button {
-    background-color: #007bff;
-    color: white;
-    border: none;
-    padding: 10px 20px;
-    border-radius: 5px;
-    cursor: pointer;
-    font-size: 1em;
-    margin-top: 10px;
-    width: 100%;
-    transition: background-color 0.3s ease;
-}
-
-.auth-form button:hover {
-    background-color: #0056b3;
-}
-
-.message {
+p#authMessage, p#searchMessage {
     margin-top: 15px;
     font-weight: bold;
-    color: #f8f8f8;
+    color: #c9d1d9; /* Ensures visibility on dark background */
 }
 
-.message.error {
-    color: #dc3545;
-}
-
-.message.success {
-    color: #28a745;
-}
-
-/* Chat Container */
-.chat-container {
-    display: flex;
-    flex-direction: column;
-    background-color: #333;
-    border-radius: 10px;
-    box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
-    width: 100%;
-    max-width: 1200px;
-    height: 90vh; /* Occupy most of the viewport height */
-    overflow: hidden;
-}
-
-header {
-    background-color: #444;
-    padding: 15px 20px;
-    border-bottom: 1px solid #555;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    color: white;
-}
-
-header h1 {
-    margin: 0;
-    font-size: 1.8em;
-    color: #007bff;
-}
-
-.user-info {
-    display: flex;
-    align-items: center;
-}
-
-.user-info span {
-    margin-right: 15px;
-    font-size: 1.1em;
-}
-
-.user-info button {
-    background-color: #dc3545;
-    color: white;
-    border: none;
-    padding: 8px 15px;
-    border-radius: 5px;
-    cursor: pointer;
-    font-size: 0.9em;
-    transition: background-color 0.3s ease;
-}
-
-.user-info button:hover {
-    background-color: #c82333;
-}
-
-.main-content {
-    display: flex;
-    flex-grow: 1;
-    overflow: hidden;
-}
-
-.left-panel {
-    width: 300px;
-    background-color: #2a2a2a;
-    border-right: 1px solid #444;
-    padding: 15px;
-    display: flex;
-    flex-direction: column;
-    overflow-y: auto; /* Allow scrolling for friends list */
-}
-
-.left-panel h3 {
-    margin-top: 0;
-    color: #007bff;
-    border-bottom: 1px solid #444;
-    padding-bottom: 10px;
-    margin-bottom: 15px;
-}
-
-.search-user {
-    display: flex;
-    gap: 5px;
-    margin-bottom: 15px;
-}
-
-.search-user input {
-    flex-grow: 1;
-    padding: 8px;
-    border: 1px solid #555;
-    border-radius: 5px;
-    background-color: #444;
-    color: #eee;
-}
-
-.search-user button {
-    background-color: #28a745;
-    color: white;
-    border: none;
-    padding: 8px 12px;
-    border-radius: 5px;
-    cursor: pointer;
-    transition: background-color 0.3s ease;
-}
-
-.search-user button:hover {
-    background-color: #218838;
-}
-
-.friends-list {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    flex-grow: 1;
-}
-
-.friend-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 10px 15px;
-    border-bottom: 1px solid #444;
-    cursor: pointer;
-    background-color: #333;
-    transition: background-color 0.2s ease;
-}
-
-.friend-item:last-child {
-    border-bottom: none;
-}
-
-.friend-item:hover {
-    background-color: #555;
-}
-
-.friend-item.active-chat {
-    background-color: #007bff; /* Blue for active chat */
-    color: white;
-}
-
-.friend-item.new-message-indicator {
-    background-color: #ffc107; /* Yellow for new messages */
-    color: black;
-    font-weight: bold;
-}
-
-.friend-item.online span::before {
-    content: '●';
-    color: #28a745; /* Green */
-    margin-right: 5px;
-}
-
-.friend-item.offline span::before {
-    content: '●';
-    color: #6c757d; /* Gray */
-    margin-right: 5px;
-}
-
-.friend-item.request {
-    background-color: #6c757d; /* Grey for pending requests */
-    color: white;
-}
-
-.friend-actions {
-    display: flex;
-    gap: 5px;
-}
-
-.friend-actions button {
-    padding: 5px 10px;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-    font-size: 0.8em;
-    white-space: nowrap; /* Prevent button text from wrapping */
-}
-
-.chat-btn {
-    background-color: #007bff;
-    color: white;
-}
-
-.chat-btn:hover {
-    background-color: #0056b3;
-}
-
-.unfriend-btn {
-    background-color: #dc3545;
-    color: white;
-}
-
-.unfriend-btn:hover {
-    background-color: #c82333;
-}
-
-.chat-panel {
-    flex-grow: 1;
-    display: flex;
-    flex-direction: column;
-    padding: 15px;
-}
-
-.chat-header {
-    background-color: #444;
-    padding: 10px 15px;
-    border-radius: 8px;
-    margin-bottom: 15px;
-    text-align: center;
-}
-
-.chat-header h2 {
-    margin: 0;
-    font-size: 1.5em;
-}
-
-.chat-header #currentChatPartner {
-    color: #28a745;
-}
-
-.chat-box {
-    flex-grow: 1;
-    background-color: #2a2a2a;
-    border-radius: 8px;
-    padding: 15px;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    margin-bottom: 15px;
+/* Chat Box Specific Styles */
+#chatBox { /* Renamed from .chat-messages-container to match your existing ID */
+  background-color: #0d1117; /* Dark background for chat area */
+  border: 1px solid #30363d; /* Dark border */
+  padding: 10px;
+  height: 300px; /* Fixed height for chat history */
+  overflow-y: scroll; /* Enable scrolling */
+  margin-bottom: 15px;
+  border-radius: 10px;
+  text-align: left;
+  display: flex;
+  flex-direction: column; /* Stack messages vertically */
 }
 
 .chat-message {
-    padding: 8px 12px;
-    border-radius: 15px;
-    margin-bottom: 8px;
-    max-width: 70%;
-    word-wrap: break-word;
+  padding: 8px 12px;
+  border-radius: 6px; /* Slightly less rounded than default for modern feel */
+  margin-bottom: 8px;
+  max-width: 80%;
+  word-wrap: break-word;
+  font-size: 14px;
 }
 
 .chat-message.sent {
-    background-color: #007bff;
-    align-self: flex-end;
-    color: white;
-    border-bottom-right-radius: 2px;
+  background-color: #238636; /* Green for sent messages */
+  align-self: flex-end; /* Align to the right */
+  color: white;
 }
 
 .chat-message.received {
-    background-color: #555;
-    align-self: flex-start;
-    color: white;
-    border-bottom-left-radius: 2px;
-}
-
-.chat-message.system {
-    background-color: #444;
-    color: #eee;
-    text-align: center;
-    align-self: center;
-    width: 100%;
-    max-width: 90%;
-    font-style: italic;
+  background-color: #21262d; /* Slightly lighter dark for received messages */
+  border: 1px solid #30363d;
+  align-self: flex-start; /* Align to the left */
+  color: #c9d1d9;
 }
 
 .chat-message.info {
-    background-color: #17a2b8; /* Info blue */
-    color: white;
-    text-align: center;
-    align-self: center;
-    width: 100%;
-    max-width: 90%;
-    font-style: italic;
+  background-color: #1e3a8a; /* A darker blue for info messages */
+  color: #90cdf4; /* Lighter blue for info text */
+  text-align: center;
+  align-self: center; /* Center info messages */
+  width: 100%;
+  font-style: italic;
+  font-size: 13px;
+  border: 1px solid #2563eb;
 }
 
 .chat-message.error {
-    background-color: #dc3545; /* Red */
-    color: white;
-    text-align: center;
-    align-self: center;
-    width: 100%;
-    max-width: 90%;
+  background-color: #990000; /* Darker red for error messages */
+  color: #ffcccc; /* Lighter red for error text */
+  text-align: center;
+  align-self: center;
+  width: 100%;
+  font-weight: bold;
+  border: 1px solid #dc2626;
+}
+
+/* --- Friends List Styling (Integrated into your theme) --- */
+.friends-list-container {
+    border: 1px solid #30363d; /* Dark border */
+    border-radius: 10px; /* Consistent border radius */
+    padding: 10px;
+    margin-bottom: 20px;
+    background-color: #0d1117; /* Dark background */
+    text-align: left;
+    min-height: 50px; /* Give it some height even if empty */
+}
+
+.friends-list-container ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.friends-list-container li.friend-item {
+    padding: 10px 12px; /* Slightly more padding */
+    background-color: #21262d; /* Similar to received messages for consistency */
+    border-radius: 8px; /* Slightly rounded corners */
+    margin-bottom: 8px; /* Spacing between items */
+    cursor: pointer;
+    transition: background-color 0.2s ease, border-left 0.2s ease; /* Smooth transitions */
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: #c9d1d9; /* Default text color */
+    border: 1px solid transparent; /* Placeholder for border to prevent jump on hover/status */
+}
+
+.friends-list-container li.friend-item:hover {
+    background-color: #30363d; /* Lighter dark on hover */
+    border: 1px solid #58a6ff; /* Blue border on hover */
+}
+
+.friends-list-container li.friend-item.online {
+    border-left: 5px solid #28a745; /* Green bar for online */
+    font-weight: bold;
+    color: #28a745; /* Green text for online status */
+}
+
+.friends-list-container li.friend-item.offline {
+    border-left: 5px solid #6c757d; /* Gray bar for offline */
+    color: #6c757d; /* Gray text for offline status */
+}
+
+.friends-list-container li.friend-item.request {
+    border-left: 5px solid #ffc107; /* Orange/Yellow for pending requests */
+    color: #ffc107;
+}
+
+/* Style for the currently active chat friend */
+.friends-list-container li.friend-item.active-chat {
+    background-color: #30363d; /* Darker background for active chat */
+    border: 1px solid #58a6ff; /* Blue border for active chat */
+    box-shadow: 0 0 8px rgba(88, 166, 255, 0.6); /* Subtle glow */
+}
+
+/* New message indicator */
+.friends-list-container li.friend-item.new-message-indicator {
+    background-color: #004d40; /* Dark teal for new messages */
+    border-left: 5px solid #00c853; /* Brighter green indicator */
     font-weight: bold;
 }
 
-.message-input {
-    display: flex;
-    gap: 10px;
-}
 
-.message-input input {
-    flex-grow: 1;
+#noFriendsMessage {
+    color: #8b949e; /* Slightly lighter gray for info text */
+    font-style: italic;
+    text-align: center;
     padding: 10px;
-    border: 1px solid #555;
-    border-radius: 5px;
-    background-color: #444;
-    color: #eee;
 }
 
-.message-input button {
-    background-color: #007bff;
-    color: white;
-    border: none;
-    padding: 10px 20px;
-    border-radius: 5px;
-    cursor: pointer;
-    transition: background-color 0.3s ease;
-}
 
-.message-input button:disabled {
-    background-color: #6c757d;
-    cursor: not-allowed;
-}
-
-.message-input button:hover:not(:disabled) {
-    background-color: #0056b3;
+/* Responsive adjustments */
+@media (max-width: 600px) {
+    .container, .chat-container, .auth-container {
+        width: 95%;
+        margin: 10px auto;
+        padding: 20px;
+    }
+    input[type="text"],
+    input[type="password"] {
+        width: 100%;
+    }
 }
