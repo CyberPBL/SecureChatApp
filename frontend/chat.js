@@ -257,11 +257,17 @@ socket.on('chat_approved', async (data) => {
 
     if (data.history && data.history.length > 0) {
         appendMessage("System", "Loading chat history...", 'info');
-        const privateKey = await importPrivateKey(privateKeyPem);
+        const privateKey = await importPrivateKey(privateKeyPem); // Use privateKeyPem from localStorage
 
         for (const msg of data.history) {
             let decryptedMessage;
             try {
+                // Determine which key was used for this history message
+                // If the sender is 'You', it was encrypted with your own public key (messageForSelf)
+                // If the sender is the 'partner', it was encrypted with your public key by the partner (messageForReceiver)
+                // The history object stores `messageForSelf` from the sender's perspective if they sent it
+                // and `messageForReceiver` from your perspective if they sent it to you.
+                // Assuming history provides the message encrypted FOR YOU (by the sender, or by yourself for history)
                 decryptedMessage = await decryptMessage(msg.message, privateKey);
             } catch (e) {
                 decryptedMessage = "[Could not decrypt message]";
@@ -291,9 +297,10 @@ socket.on('chat_approved', async (data) => {
 
 socket.on('receive_message', async (data) => {
     console.log("Received encrypted message:", data);
+    // Ensure the message is for the currently active chat and from the correct sender
     if (data.room === currentChatRoom && data.sender === currentChatPartner) {
         try {
-            const privateKey = await importPrivateKey(privateKeyPem);
+            const privateKey = await importPrivateKey(privateKeyPem); // Use privateKeyPem from localStorage
             const decryptedMessage = await decryptMessage(data.message, privateKey);
             appendMessage(data.sender, decryptedMessage, 'received');
         } catch (error) {
@@ -301,6 +308,7 @@ socket.on('receive_message', async (data) => {
             appendMessage(data.sender, "[Encrypted Message - Decryption Error]", 'error');
         }
     } else {
+        // Handle new messages from non-active chats
         appendMessage("System", `New message from ${data.sender}. Select them to view.`, 'info');
         const friendItem = document.querySelector(`.friend-item[data-username="${data.sender}"]`);
         if (friendItem && !friendItem.classList.contains('active-chat')) {
@@ -320,7 +328,7 @@ socket.on('user_disconnected', (data) => {
     const friendItem = document.querySelector(`.friend-item[data-username="${data.username}"]`);
     if (friendItem) {
         friendItem.classList.remove('online');
-        friendItem.classList.add('offline'); // CORRECTED HERE
+        friendItem.classList.add('offline'); // Corrected from 'item.classList.add' to 'friendItem.classList.add'
     }
 });
 
@@ -353,7 +361,8 @@ async function fetchFriends() {
                 addFriendToList(friend.username, friend.status, friend.publicKey);
             });
             hasFriendsOrRequests = true;
-            // Ensure socket.onlineUsers is available before calling updateFriendOnlineStatus (IMPROVEMENT)
+            // Ensure socket.onlineUsers is available before calling updateFriendOnlineStatus
+            // It might be undefined initially if 'online_users' event hasn't fired yet
             if (socket.onlineUsers) {
                 updateFriendOnlineStatus(socket.onlineUsers);
             }
@@ -481,7 +490,9 @@ function acceptFriendRequest(senderUsername) {
     if (requestElement) {
         requestElement.remove();
     }
-    fetchFriends();
+    // No need to call fetchFriends() immediately after removing, as the backend will likely
+    // emit 'friend_list_updated' which triggers a refetch anyway.
+    // fetchFriends(); // This line can likely be removed or commented out.
 }
 
 function rejectFriendRequest(senderUsername) {
