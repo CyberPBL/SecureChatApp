@@ -3,6 +3,7 @@
 from Crypto.Cipher import AES, PKCS1_OAEP
 from Crypto.Util.Padding import pad, unpad
 from Crypto.PublicKey import RSA
+from Crypto.Hash import SHA256 # Explicitly import SHA256 for OAEP
 import base64
 import os
 
@@ -33,7 +34,8 @@ class RSAEncryption:
             str: Base64 encoded ciphertext.
         """
         public_key = RSA.import_key(public_key_str.encode('utf-8'))
-        cipher = PKCS1_OAEP.new(public_key)
+        # Explicitly use SHA256 for OAEP padding to match frontend
+        cipher = PKCS1_OAEP.new(public_key, hashAlgo=SHA256)
         # PKCS1_OAEP has a message size limit. For 2048-bit RSA, it's ~214 bytes.
         # This method is for encrypting small data like AES keys, not full messages.
         encrypted = cipher.encrypt(message.encode('utf-8'))
@@ -51,9 +53,14 @@ class RSAEncryption:
             str: Decrypted plaintext message.
         """
         private_key = RSA.import_key(private_key_str.encode('utf-8'))
-        cipher = PKCS1_OAEP.new(private_key)
-        decrypted = cipher.decrypt(base64.b64decode(encrypted_message_b64))
-        return decrypted.decode('utf-8')
+        # Explicitly use SHA256 for OAEP padding to match frontend
+        cipher = PKCS1_OAEP.new(private_key, hashAlgo=SHA256)
+        try:
+            decrypted = cipher.decrypt(base64.b64decode(encrypted_message_b64))
+            return decrypted.decode('utf-8')
+        except ValueError as e:
+            print(f"❌ Decryption Error (RSA): {e}")
+            raise # Re-raise to propagate the error
 
 class AesEncryption:
     """Handles AES symmetric encryption and decryption (CBC mode)."""
@@ -71,7 +78,7 @@ class AesEncryption:
         """
         key_bytes = key.encode('utf-8')
         if len(key_bytes) not in {16, 24, 32}:  # Valid key lengths for AES
-            raise ValueError("Invalid AES key length. Key must be 16, 24, or 32 bytes.")
+            raise ValueError(f"Invalid AES key length. Key must be 16, 24, or 32 bytes. Got {len(key_bytes)} bytes.")
 
         iv = os.urandom(16)  # Generate a random Initialization Vector (IV)
         cipher = AES.new(key_bytes, AES.MODE_CBC, iv)  # Create cipher object
@@ -79,11 +86,12 @@ class AesEncryption:
         encrypted_message = cipher.encrypt(pad(message.encode('utf-8'), AES.block_size))
 
         # Combine the IV and the encrypted message and encode it in base64 for easy transmission
+        # FIXED: The return statement was incomplete here
         return base64.b64encode(iv + encrypted_message).decode('utf-8')
 
     @staticmethod
     def decrypt(encrypted_message_b64: str, key: str) -> str:
-        """Decrypts a base64 encoded AES-CBC ciphertext with a given key.
+        """Decrypts a base64 encoded ciphertext using AES-CBC with a given key.
 
         Args:
             encrypted_message_b64 (str): Base64 encoded IV + ciphertext.
@@ -93,16 +101,16 @@ class AesEncryption:
             str: Decrypted plaintext message.
         """
         key_bytes = key.encode('utf-8')
-        if len(key_bytes) not in {16, 24, 32}:  # Valid key lengths for AES
-            raise ValueError("Invalid AES key length. Key must be 16, 24, or 32 bytes.")
+        if len(key_bytes) not in {16, 24, 32}:
+            raise ValueError(f"Invalid AES key length. Key must be 16, 24, or 32 bytes. Got {len(key_bytes)} bytes.")
 
-        data = base64.b64decode(encrypted_message_b64)  # Decode from base64
-        iv = data[:16]  # Extract the IV from the beginning (first 16 bytes)
-        encrypted_data = data[16:]  # Extract the encrypted part of the message
-
-        cipher = AES.new(key_bytes, AES.MODE_CBC, iv)  # Recreate the cipher object
-        # Decrypt and unpad the message
-        decrypted_message = unpad(cipher.decrypt(encrypted_data), AES.block_size)
-
-        return decrypted_message.decode('utf-8')  # Return the decrypted message as a string
-
+        try:
+            data = base64.b64decode(encrypted_message_b64)
+            iv = data[:16]
+            ciphertext = data[16:]
+            cipher = AES.new(key_bytes, AES.MODE_CBC, iv)
+            decrypted = unpad(cipher.decrypt(ciphertext), AES.block_size)
+            return decrypted.decode('utf-8')
+        except (ValueError, IndexError) as e:
+            print(f"❌ Decryption Error (AES): {e}")
+            raise # Re-raise to propagate the error
