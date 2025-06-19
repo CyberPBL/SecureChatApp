@@ -27,7 +27,8 @@ function displayAuthMessage(message, isError = false) {
 // the user's username with their current socket ID in MongoDB.
 socket.on('connect', () => {
   console.log("✅ Socket.IO connected with ID:", socket.id);
-  const username = sessionStorage.getItem("username"); // Using sessionStorage as per your code
+  // Ensure username is trimmed when retrieved from session storage for registration
+  const username = sessionStorage.getItem("username")?.trim();
   if (username) {
     // Emit the register_user event to the backend
     socket.emit("register_user", { username: username });
@@ -49,7 +50,8 @@ socket.on('error', (data) => {
 
 // --- User Registration Function ---
 async function registerUser() {
-  const username = document.getElementById("anonymousId").value;
+  // Trim username directly from input
+  const username = document.getElementById("anonymousId").value.trim();
   const pin = document.getElementById("securePin").value;
 
   if (!username || !pin) {
@@ -83,7 +85,7 @@ async function registerUser() {
     const privateKeyPem = `-----BEGIN PRIVATE KEY-----\n${privateKeyBase64.match(/.{1,64}/g).join("\n")}\n-----END PRIVATE KEY-----`;
 
     sessionStorage.setItem("privateKey", privateKeyPem); // Store locally
-    sessionStorage.setItem("username", username);
+    sessionStorage.setItem("username", username); // Ensure trimmed username is saved
 
     console.log("Registering user:", { username, pin, publicKeyPem });
 
@@ -114,9 +116,9 @@ async function registerUser() {
 
 // --- User Login Function ---
 async function loginUser(username = null, pin = null) {
-  // Use provided username/pin or get from input fields
-  const currentUsername = username || document.getElementById("anonymousId").value;
-  const currentPin = pin || document.getElementById("securePin").value;
+  // Use provided username/pin or get from input fields, trim both
+  const currentUsername = (username || document.getElementById("anonymousId").value).trim();
+  const currentPin = (pin || document.getElementById("securePin").value); // PIN doesn't need trimming typically
 
   if (!currentUsername || !currentPin) {
     displayAuthMessage("Username and PIN are required.", true);
@@ -132,7 +134,7 @@ async function loginUser(username = null, pin = null) {
 
     const data = await res.json();
     if (data.success) {
-      sessionStorage.setItem("username", currentUsername);
+      sessionStorage.setItem("username", currentUsername); // Ensure trimmed username is saved
       displayAuthMessage("✅ Login successful, redirecting...", false);
       window.location.href = "chat.html"; // Redirect on success
     } else {
