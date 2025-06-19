@@ -1,10 +1,10 @@
 // script.js
 
 const BASE_URL = "https://securechatapp-ys8y.onrender.com";
-console.log("Connecting to backend:", BASE_URL);
+console.log("Connecting to backend for auth operations:", BASE_URL);
 
-// Initialize Socket.IO connection (for login/registration purposes)
-// Note: A separate socket connection will be managed in chat.js for chat functionality
+// Initialize Socket.IO connection (mainly for status/error feedback on login page,
+// a dedicated connection for chat is handled in chat.js)
 const socket = io(BASE_URL);
 
 /**
@@ -21,12 +21,9 @@ function displayAuthMessage(message, isError = false) {
   }, 5000);
 }
 
-// --- Event Listener for Socket.IO Connection ---
-// This part is primarily for showing connection status on the login page,
-// actual user registration/login is handled via HTTP fetch.
+// --- Event Listener for Socket.IO Connection (for auth page) ---
 socket.on('connect', () => {
   console.log("✅ Socket.IO connected for auth with ID:", socket.id);
-  // No need to emit 'register_user' here, as it's handled after successful login/registration.
 });
 
 socket.on('error', (data) => {
@@ -66,11 +63,11 @@ async function registerUser() {
     const privateKeyBase64 = btoa(String.fromCharCode(...new Uint8Array(privateKeyBuffer)));
     const privateKeyPem = `-----BEGIN PRIVATE KEY-----\n${privateKeyBase64.match(/.{1,64}/g).join("\n")}\n-----END PRIVATE KEY-----`;
 
-    // Store private key and username in sessionStorage
+    // Store private key and username in sessionStorage for later use in chat.js
     sessionStorage.setItem("privateKey", privateKeyPem);
     sessionStorage.setItem("username", username);
 
-    console.log("Registering user:", { username, pin, publicKeyPem: publicKeyPem.substring(0, 50) + '...' });
+    console.log("Attempting to register user:", { username, publicKeyPem: publicKeyPem.substring(0, 50) + '...' });
 
     const res = await fetch(`${BASE_URL}/register`, {
       method: "POST",
@@ -115,11 +112,17 @@ async function loginUser(username = null, pin = null) {
     const data = await res.json();
     if (data.success) {
       sessionStorage.setItem("username", currentUsername);
+      // Backend should also return the public key for login, or we fetch it
+      // For simplicity, we assume the private key is already in sessionStorage if registered,
+      // or the user needs to re-register if switching devices or clearing data.
+      // A more robust login would fetch the public key from the server upon login if not present.
+
       displayAuthMessage("✅ Login successful, redirecting...", false);
       window.location.href = "chat.html"; // Redirect to chat page
     } else {
       displayAuthMessage("Login failed: " + data.message, true);
-    (error) {
+    }
+  } catch (error) {
     console.error("Error during login:", error);
     displayAuthMessage("Login failed: " + error.message, true);
   }
