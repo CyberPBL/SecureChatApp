@@ -1,6 +1,6 @@
 // auth.js
 
-const BASE_URL = "https://securechatapp-ys8y.onrender.com"; // Your backend URL
+const BASE_URL = "https://securechatapp-ys8y.onrender.com"; // Your Render backend URL
 
 // DOM Elements for Auth
 const authContainer = document.getElementById("authContainer");
@@ -164,26 +164,15 @@ async function loginUser() {
 
             if (keyData.success) {
                 // For login, we need to ensure the client has their private key.
-                // In a real app, the private key would be re-entered or derived from a passphrase.
-                // For this securechat demo, we assume the private key is derived or re-entered
-                // and then stored in localStorage. Since we don't re-enter it, we rely on it being
-                // in localStorage from a previous registration/login.
-                // If it's missing, the user will be prompted to re-register/re-login.
-
-                // If user logs in successfully, assume their private key is already in localStorage.
-                // If not, it means they cleared storage or logged in on a new device.
-                // In a production app, the private key would be encrypted with the PIN and stored server-side,
-                // or derived from the PIN each time, or handled through a secure key management system.
-                // For this demo, we'll store public key consistently. Private key persistence is key.
+                // In this demo, we assume it's in localStorage from a previous registration.
+                // If it's missing, the user will be prompted to re-register.
 
                 const privateKeyFromStorage = localStorage.getItem("privateKey");
 
                 if (!privateKeyFromStorage) {
                     displayAuthMessage(loginMessage, "Private key missing. Please register or re-register to generate keys.", true);
                     console.error("Private key not found in localStorage after login attempt.");
-                    // Force re-registration or a different flow to get keys back
-                    // For now, let's just abort login if private key is not found
-                    return;
+                    return; // Abort login if private key is not found
                 }
 
                 localStorage.setItem("username", username);
