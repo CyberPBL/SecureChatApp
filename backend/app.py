@@ -6,6 +6,7 @@ print("Running app.py")
 import os
 import base64
 import datetime
+import re # Import regex module
 from flask import Flask, request, jsonify, current_app
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit, join_room, leave_room
@@ -80,6 +81,35 @@ socketio = SocketIO(app, cors_allowed_origins=[
     "http://localhost:5500",
     "https://securechat-frontend-9qs2.onrender.com"
 ])
+
+# --- Malicious Link Detection Patterns (Backend) ---
+# Converted from the provided JavaScript regex patterns
+MALICIOUS_PATTERNS = [
+    r"https?:\/\/(?:bit\.ly|tinyurl\.com|goo\.gl|t\.co|rb\.gy|is\.gd|shorte\.st|adf\.ly|rebrand\.ly|cutt\.ly|buff\.ly|lnkd\.in|bl\.ink|trib\.al|snip\.ly|shorturl\.at|shrtco\.de|short\.cm|v\.gd|zi\.mu)",
+    r"https?:\/\/.*\.(tk|ml|ga|cf|gq|xyz|top|club|pw|info)(\/|$)",
+    r"https?:\/\/(?:000webhostapp\.com|weebly\.com|wixsite\.com|github\.io|firebaseapp\.com|pages\.dev)",
+    r"https?:\/\/(?:[0-9]{1,3}\.){3}[0-9]{1,3}",
+    r"<script.*?>.*?<\/script>", # Detects script tags
+    r"onerror\s*=", # Detects onerror attributes
+    r"javascript:", # Detects javascript: URIs
+    r"data:text\/html", # Detects data URIs for HTML
+    r"(login|verify|reset|account|bank|payment|alert).*(free|urgent|click|now|immediately)", # Phishing keywords
+    r"https?:\/\/.*(?:paypal|google|facebook|instagram|microsoft|whatsapp)\.[^\.]+?\.(?:tk|ml|ga|cf|gq|xyz|top)", # Typosquatting/Phishing domains
+    r"%[0-9a-f]{2}", # URL encoded characters often used in exploits
+    r"[\u200B-\u200F\u202A-\u202E]", # Unicode invisible characters
+]
+
+def _scan_for_malicious_content(message_content):
+    """
+    Scans message content for malicious patterns.
+    Returns True if malicious content is found, along with the matched pattern.
+    Returns False and None otherwise.
+    """
+    for pattern_str in MALICIOUS_PATTERNS:
+        if re.search(pattern_str, message_content, re.IGNORECASE):
+            print(f"🚨 Malicious content detected! Matched pattern: {pattern_str}")
+            return True, pattern_str
+    return False, None
 
 # --- Flask Routes (these are handled by Gunicorn workers, not directly by SocketIO's event loop, so no change needed here) ---
 
@@ -332,8 +362,50 @@ def handle_join(data):
     else:
         emit('error', {'message': 'Missing room or username in join.'}, room=request.sid)
 
-def _send_message_background(from_user, to_user, message, room, sender_sid): # Added sender_sid for consistency
+def _send_message_background(from_user, to_user, message, room, sender_sid):
     with app.app_context(): # ✅ Push app context
+        # --- Malicious Link Scan ---
+        is_malicious, matched_pattern = _scan_for_malicious_content(message)
+
+        if is_malicious:
+            print(f"🚨🚨🚨 Blocking malicious message from {from_user} to {to_user}. Matched: {matched_pattern}")
+
+            # Notify sender
+            socketio.emit('malicious_message_blocked', {
+                'from_user': from_user,
+                'to_user': to_user,
+                'message': "Your message contained suspicious content and was blocked.",
+                'reason': f"Matched pattern: {matched_pattern}"
+            }, room=sender_sid)
+
+            # Notify recipient (if online)
+            recipient_user = users_collection.find_one({"username": to_user})
+            if recipient_user and recipient_user.get("socket_id"):
+                socketio.emit('malicious_message_blocked', {
+                    'from_user': from_user,
+                    'to_user': to_user,
+                    'message': f"A message from {from_user} was blocked due to suspicious content.",
+                    'reason': "Security Alert"
+                }, room=recipient_user["socket_id"])
+
+            # Remove from friend list (both ways)
+            users_collection.update_one(
+                {"username": from_user},
+                {"$pull": {"friends": to_user}}
+            )
+            users_collection.update_one(
+                {"username": to_user},
+                {"$pull": {"friends": from_user}}
+            )
+            print(f"❌ {from_user} and {to_user} removed from each other's friend lists due to malicious activity.")
+            # Re-emit friends list to both users to update UI
+            socketio.start_background_task(_get_friends_background, from_user, sender_sid)
+            if recipient_user and recipient_user.get("socket_id"):
+                socketio.start_background_task(_get_friends_background, to_user, recipient_user["socket_id"])
+
+            return # Stop processing, message is blocked
+
+        # If not malicious, proceed with storing and emitting the message
         messages_collection.insert_one({
             "from_user": from_user,
             "to_user": to_user,
