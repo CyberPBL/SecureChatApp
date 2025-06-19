@@ -482,7 +482,7 @@ socket.on("receive_message", async (data) => {
     displayChatMessage(`${senderUsername}: ${decryptedMessage}`, senderUsername === username ? 'sent' : 'received');
   } catch (e) {
     console.error("❌ Decryption failed", e);
-    displayChatMessage(`${data.username}: � (Unable to decrypt message)`, 'error');
+    displayChatMessage(`${data.username}:  (Unable to decrypt message)`, 'error');
   }
 });
 
@@ -572,7 +572,8 @@ async function generateAndSendAesKey(recipientUsername) {
     );
     // Use the robust arrayBufferToBase64 for encryption output
     const encryptedAesKeyBase64 = arrayBufferToBase64(encryptedAesKeyBuffer);
-    console.log("🔑 Encrypted AES Key (Base64 for transport):", encryptedAesKeyBase64);
+    // NEW LOG: Log the encrypted key right before emitting
+    console.log("🔑 Emitting encrypted AES Key from Frontend (Base64 for transport):", encryptedAesKeyBase64);
 
 
     socket.emit('send_aes_key_encrypted', {
@@ -605,6 +606,9 @@ async function sendMessage() {
 
   try {
     const encryptedBase64 = await AesEncryption.encrypt(message, currentChatKey);
+    // NEW LOG: Log the encrypted message right before emitting
+    console.log("✉️ Emitting encrypted chat message from Frontend (Base64):", encryptedBase64);
+
 
     displayChatMessage(`You: ${message}`, 'sent');
 
