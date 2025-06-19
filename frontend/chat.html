@@ -10,26 +10,15 @@
     <h2>Welcome to SecureChat</h2>
     <p>Logged in as: <span id="userNameDisplay"></span></p>
 
-    <!-- ✅ Feature: Friends List Container -->
-    <h3>Your Friends</h3>
-    <div id="friendsContainer" class="friends-list-container">
-      <!-- Friends will be dynamically added here by chat.js -->
-      <p id="noFriendsMessage">No approved friends yet. Search for someone to chat!</p>
-    </div>
-    <hr> <!-- Separator -->
-
-    <h3>Search for a user to chat with:</h3>
-    <input type="text" id="searchUser" placeholder="Enter username to search" />
-    <button onclick="searchUser()">Search / Send Request</button>
-    <p id="searchMessage"></p>
+    <h3>Start a Chat</h3>
+    <input type="text" id="partnerInput" placeholder="Enter username" />
+    <button id="joinBtn">Join Chat</button>
 
     <h3>Chat Box</h3>
-    <div id="chatBox" class="chat-messages-container">
-      <!-- Messages will be appended here by JavaScript -->
-    </div>
+    <div id="chatBox" class="chat-messages-container"></div>
 
-    <input type="text" id="messageInput" placeholder="Type a message..." />
-    <button onclick="sendMessage()">Send</button>
+    <input id="messageInput" type="text" placeholder="Type a message..." disabled />
+    <button id="sendButton" disabled>Send</button>
   </div>
 
   <script src="chat.js"></script>
