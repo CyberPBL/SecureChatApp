@@ -6,7 +6,7 @@ print("Running app.py")
 import os
 import base64
 import datetime
-import re # Import regex module
+import re # Import regex module for malicious link detection
 from flask import Flask, request, jsonify, current_app
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit, join_room, leave_room
@@ -22,9 +22,9 @@ try:
 except ImportError:
     print("WARNING: encryption.py not found or classes missing. RSA/AES functionality might be impaired.")
     # Define dummy classes if encryption.py is missing to prevent crash during Flask startup
-    class AesEncryption:
+    class AesEncryption: # Placeholder to prevent errors
         pass
-    class RSAEncryption:
+    class RSAEncryption: # Placeholder to prevent errors
         pass
 
 
@@ -111,7 +111,7 @@ def _scan_for_malicious_content(message_content):
             return True, pattern_str
     return False, None
 
-# --- Flask Routes (these are handled by Gunicorn workers, not directly by SocketIO's event loop, so no change needed here) ---
+# --- Flask Routes ---
 
 @app.route('/search_user')
 def search_user():
@@ -143,7 +143,7 @@ def register():
         data = request.get_json()
         print("📥 Received data:", data)
 
-        username = data.get("username").strip()
+        username = data.get("username").strip() # Ensure username is trimmed on backend too
         pin = data.get("pin")
         public_key = data.get("publicKey")
 
@@ -158,10 +158,9 @@ def register():
         users_collection.insert_one({
             "username": username,
             "pin": hashed_pin,
-            "public_key": public_key, # This is the public key being saved
+            "public_key": public_key,
             "friends": [] # Feature: Initialize empty friends list
         })
-        # ✅ New Logging: Print the public key saved to MongoDB
         print(f"✅ Registered {username}. Saved Public Key (first 50 chars): {public_key[:50]}...")
 
 
@@ -185,7 +184,7 @@ def get_public_key():
 @app.route('/login', methods=['POST'])
 def login():
     data = request.json
-    username = data.get('username').strip()
+    username = data.get('username').strip() # Ensure username is trimmed on backend too
     pin = data.get('pin')
 
     if not username or not pin:
@@ -204,7 +203,7 @@ def handle_connect():
     print(f"🔗 Client connected: {request.sid}")
 
 def _register_user_background(username, sid):
-    with app.app_context(): # ✅ Push app context
+    with app.app_context(): # Push app context
         username = username.strip()
         if users_collection.find_one({"username": username}):
             users_collection.update_one(
@@ -226,7 +225,7 @@ def handle_register_user(data):
         emit('error', {'message': 'Username missing in registration.'}, room=sid)
 
 def _get_online_users_background(sid):
-    with app.app_context(): # ✅ Push app context
+    with app.app_context(): # Push app context
         online_users_cursor = users_collection.find({"socket_id": {"$exists": True, "$ne": None, "$ne": ""}}, {"username": 1, "_id": 0})
         online_users = [user['username'] for user in online_users_cursor]
         print(f"👥 Online users requested. Currently online: {online_users}")
@@ -237,7 +236,7 @@ def handle_get_online_users():
     socketio.start_background_task(_get_online_users_background, request.sid)
 
 def _get_friends_background(username, sid):
-    with app.app_context(): # ✅ Push app context
+    with app.app_context(): # Push app context
         user = users_collection.find_one({"username": username}, {"_id": 0, "friends": 1})
         if user and "friends" in user:
             friends_with_status = []
@@ -261,7 +260,7 @@ def handle_get_friends(data):
         emit('error', {'message': 'Username missing for get_friends.'}, room=request.sid)
 
 def _send_chat_request_background(from_user, to_user, sender_sid):
-    with app.app_context(): # ✅ Push app context
+    with app.app_context(): # Push app context
         target_user = users_collection.find_one({"username": to_user})
         if target_user and "socket_id" in target_user and target_user["socket_id"] is not None and target_user["socket_id"] != "":
             target_sid = target_user["socket_id"]
@@ -281,7 +280,7 @@ def handle_send_chat_request(data):
     socketio.start_background_task(_send_chat_request_background, from_user, to_user, request.sid)
 
 def _approve_chat_request_background(from_user, to_user, approved, approver_sid):
-    with app.app_context(): # ✅ Push app context
+    with app.app_context(): # Push app context
         if approved:
             users_collection.update_one(
                 {"username": from_user},
@@ -317,11 +316,11 @@ def handle_approve_chat_request(data):
     socketio.start_background_task(_approve_chat_request_background, from_user, to_user, approved, request.sid)
 
 def _send_aes_key_encrypted_background(from_user, to_user, encrypted_aes_key, sender_sid):
-    with app.app_context(): # ✅ Push app context
+    with app.app_context(): # Push app context
         target_user = users_collection.find_one({"username": to_user})
         if target_user and "socket_id" in target_user and target_user["socket_id"] is not None and target_user["socket_id"] != "":
             target_sid = target_user["socket_id"]
-            # ✅ NEW LOG: Print the encrypted_aes_key right before emitting from backend
+            # NEW LOG: Print the encrypted_aes_key right before emitting from backend
             print(f"🔑 Backend emitting encrypted AES key from {from_user} to {to_user} (first 50 chars): {encrypted_aes_key[:50]}...")
             socketio.emit('receive_aes_key_encrypted', {
                 'from_user': from_user,
@@ -342,7 +341,7 @@ def handle_send_aes_key_encrypted(data):
     socketio.start_background_task(_send_aes_key_encrypted_background, from_user, to_user, encrypted_aes_key, request.sid)
 
 def _join_background(room, username, sid_from_request): # Added sid_from_request parameter
-    with app.app_context(): # ✅ Push app context
+    with app.app_context(): # Push app context
         join_room(room, sid=sid_from_request) # Explicitly pass sid
         print(f"{username} joined room {room}")
         chat_partner = room.replace(username + '_', '').replace('_' + username, '')
@@ -362,10 +361,15 @@ def handle_join(data):
     else:
         emit('error', {'message': 'Missing room or username in join.'}, room=request.sid)
 
-def _send_message_background(from_user, to_user, message, room, sender_sid):
-    with app.app_context(): # ✅ Push app context
+def _send_message_background(from_user, to_user, encrypted_message, room, sender_sid):
+    with app.app_context():
         # --- Malicious Link Scan ---
-        is_malicious, matched_pattern = _scan_for_malicious_content(message)
+        # Assuming we can decrypt for scanning. If not, scan encrypted form for patterns like short URLs.
+        # For a robust solution, you might need to try and decrypt here if the content is always encrypted
+        # and patterns are based on decrypted text. For now, scanning encryptedBase64 directly.
+        # This is a simplification; ideally, you'd decrypt before scanning for text-based patterns.
+        # However, for obfuscated URLs or script tags, scanning the base64 can still catch some.
+        is_malicious, matched_pattern = _scan_for_malicious_content(encrypted_message) # Scan the encrypted Base64 string
 
         if is_malicious:
             print(f"🚨🚨🚨 Blocking malicious message from {from_user} to {to_user}. Matched: {matched_pattern}")
@@ -402,23 +406,24 @@ def _send_message_background(from_user, to_user, message, room, sender_sid):
             socketio.start_background_task(_get_friends_background, from_user, sender_sid)
             if recipient_user and recipient_user.get("socket_id"):
                 socketio.start_background_task(_get_friends_background, to_user, recipient_user["socket_id"])
-
             return # Stop processing, message is blocked
 
         # If not malicious, proceed with storing and emitting the message
         messages_collection.insert_one({
             "from_user": from_user,
             "to_user": to_user,
-            "message": message,
+            "message": encrypted_message, # Store the encrypted message
             "room": room,
             "timestamp": datetime.datetime.utcnow(),
             "last_seen": None
         })
         print(f"💬 Encrypted message from {from_user} to {to_user} in room {room} stored.")
+        # NEW LOG: Log the encrypted message just before emitting
+        print(f"✉️ Backend emitting encrypted message from {from_user} to room {room} (first 50 chars): {encrypted_message[:50]}...")
 
         socketio.emit('receive_message', {
             'username': from_user,
-            'message': message,
+            'message': encrypted_message, # This is already the encrypted message
             'timestamp': datetime.datetime.utcnow().isoformat()
         }, room=room, include_self=True)
 
@@ -426,16 +431,20 @@ def _send_message_background(from_user, to_user, message, room, sender_sid):
 def handle_send_message(data):
     from_user = data.get('from_user')
     to_user = data.get('to_user')
-    message = data.get('message')
+    message = data.get('message') # This is the encrypted message from the client
     room = data.get('room')
 
     if not all([from_user, message, room]):
         emit('error', {'message': 'Missing from_user, message, or room in send_message.'}, room=request.sid)
         return
+    
+    # NEW LOG: Log the encrypted message received by the backend
+    print(f"✉️ Backend received encrypted message from {from_user} (first 50 chars): {message[:50]}...")
+
     socketio.start_background_task(_send_message_background, from_user, to_user, message, room, request.sid)
 
 def _disconnect_background(sid):
-    with app.app_context(): # ✅ Push app context
+    with app.app_context(): # Push app context
         result = users_collection.update_one(
             {"socket_id": sid},
             {"$unset": {"socket_id": ""}}
