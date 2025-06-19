@@ -212,7 +212,7 @@ socket.on('friend_request_received', (data) => {
     friendRequestElement.classList.add("friend-item", "request");
     friendRequestElement.innerHTML = `
         <span>${data.sender} (Pending Request)</span>
-        <div>
+        <div class="friend-actions">
             <button onclick="acceptFriendRequest('${data.sender}')" style="background-color: #28a745; width: auto; margin: 0 5px;">Accept</button>
             <button onclick="rejectFriendRequest('${data.sender}')" style="background-color: #dc3545; width: auto; margin: 0 5px;">Reject</button>
         </div>
@@ -322,7 +322,7 @@ socket.on('user_disconnected', (data) => {
     const friendItem = document.querySelector(`.friend-item[data-username="${data.username}"]`);
     if (friendItem) {
         friendItem.classList.remove('online');
-        item.classList.add('offline');
+        friendItem.classList.add('offline'); // Corrected from 'item.classList.add'
     }
 });
 
@@ -338,6 +338,37 @@ socket.on('message_from_friend_blocked', (data) => {
 });
 // END NEW Socket.IO Events
 
+// NEW Socket.IO Events for unfriend
+socket.on('unfriended_success', (data) => {
+    appendMessage("System", `You have unfriended ${data.unfriendedUser}.`, 'info');
+    if (currentChatPartner === data.unfriendedUser) {
+        currentChatPartner = null;
+        currentChatRoom = null;
+        currentChatPartnerDisplay.textContent = "(Not chatting)";
+        chatBox.innerHTML = ''; // Clear chat history
+        messageInput.setAttribute("disabled", "true");
+        sendButton.setAttribute("disabled", "true");
+        appendMessage("System", "Chat session ended. Friend removed.", 'info');
+    }
+    fetchFriends(); // Re-fetch friends list to update UI
+});
+
+socket.on('you_were_unfriended', (data) => {
+    appendMessage("System", `😭 You were unfriended by ${data.unfriender}.`, 'info');
+    if (currentChatPartner === data.unfriender) {
+        currentChatPartner = null;
+        currentChatRoom = null;
+        currentChatPartnerDisplay.textContent = "(Not chatting)";
+        chatBox.innerHTML = ''; // Clear chat history
+        messageInput.setAttribute("disabled", "true");
+        sendButton.setAttribute("disabled", "true");
+        appendMessage("System", "Chat session ended. This user is no longer your friend.", 'info');
+    }
+    fetchFriends(); // Re-fetch friends list to update UI
+});
+// END NEW Socket.IO Events for unfriend
+
+
 // --- Friends List Management ---
 
 async function fetchFriends() {
@@ -346,7 +377,7 @@ async function fetchFriends() {
         const data = await res.json();
 
         const friendsListUl = friendsContainer.querySelector('ul');
-        friendsListUl.innerHTML = '';
+        friendsListUl.innerHTML = ''; // Clear existing list before re-populating
 
         let hasFriendsOrRequests = false;
 
@@ -360,13 +391,14 @@ async function fetchFriends() {
 
         if (data.pendingRequests && data.pendingRequests.length > 0) {
             data.pendingRequests.forEach(sender => {
+                // Ensure request is not already displayed, or update if it is
                 if (!document.getElementById(`request-${sender}`)) {
                     const friendRequestElement = document.createElement("li");
                     friendRequestElement.id = `request-${sender}`;
                     friendRequestElement.classList.add("friend-item", "request");
                     friendRequestElement.innerHTML = `
                         <span>${sender} (Pending Request)</span>
-                        <div>
+                        <div class="friend-actions">
                             <button onclick="acceptFriendRequest('${sender}')" style="background-color: #28a745; width: auto; margin: 0 5px;">Accept</button>
                             <button onclick="rejectFriendRequest('${sender}')" style="background-color: #dc3545; width: auto; margin: 0 5px;">Reject</button>
                         </div>
@@ -397,10 +429,29 @@ function addFriendToList(friendUsername, status = 'offline', publicKeyPemString)
         friendItem = document.createElement("li");
         friendItem.classList.add("friend-item");
         friendItem.setAttribute("data-username", friendUsername);
-        friendItem.innerHTML = `<span>${friendUsername}</span>`;
-        friendItem.addEventListener('click', () => selectFriend(friendUsername));
+        friendItem.innerHTML = `
+            <span>${friendUsername}</span>
+            <div class="friend-actions">
+                <button class="chat-btn" onclick="selectFriend('${friendUsername}')">Chat</button>
+                <button class="unfriend-btn" onclick="unfriendUser('${friendUsername}')">Unfriend</button>
+            </div>
+        `;
         friendsListUl.appendChild(friendItem);
+    } else {
+        // If friend item already exists, ensure unfriend button is present
+        // This handles cases where a pending request turns into a friend
+        if (!friendItem.querySelector('.unfriend-btn')) {
+            const friendActionsDiv = document.createElement('div');
+            friendActionsDiv.classList.add('friend-actions');
+            friendActionsDiv.innerHTML = `
+                <button class="chat-btn" onclick="selectFriend('${friendUsername}')">Chat</button>
+                <button class="unfriend-btn" onclick="unfriendUser('${friendUsername}')">Unfriend</button>
+            `;
+            friendItem.innerHTML = `<span>${friendUsername}</span>`; // Clear existing content
+            friendItem.appendChild(friendActionsDiv);
+        }
     }
+
 
     friendItem.classList.remove('online', 'offline', 'request');
     friendItem.classList.add(status);
@@ -480,7 +531,7 @@ function acceptFriendRequest(senderUsername) {
     if (requestElement) {
         requestElement.remove();
     }
-    fetchFriends();
+    fetchFriends(); // Re-fetch friends to ensure the accepted friend appears as a regular friend
 }
 
 function rejectFriendRequest(senderUsername) {
@@ -494,6 +545,14 @@ function rejectFriendRequest(senderUsername) {
         noFriendsMessage.style.display = 'block';
     }
 }
+
+// NEW: Unfriend Function
+function unfriendUser(unfriendedUsername) {
+    if (confirm(`Are you sure you want to unfriend ${unfriendedUsername}? This will remove them from your friends list and end the current chat.`)) {
+        socket.emit('unfriend_user', { unfriender: currentUser, unfriended: unfriendedUsername });
+    }
+}
+// END NEW: Unfriend Function
 
 async function sendMessage() {
     const message = messageInput.value.trim();
