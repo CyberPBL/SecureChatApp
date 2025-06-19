@@ -3,15 +3,15 @@
 const BASE_URL = "https://securechatapp-ys8y.onrender.com"; // Ensure this matches your backend URL
 const socket = io(BASE_URL);
 
-// Retrieve user info and private key from localStorage (changed from sessionStorage)
-let currentUser = localStorage.getItem("username");
-let privateKeyPem = localStorage.getItem("privateKey");
-let publicKeyPem = localStorage.getItem("publicKey");
+// Retrieve user info and private key from sessionStorage
+let currentUser = sessionStorage.getItem("username");
+let privateKeyPem = sessionStorage.getItem("privateKey");
+let publicKeyPem = sessionStorage.getItem("publicKey");
 
 let currentChatPartner = null;
 let currentChatRoom = null;
-let friendPublicKeys = {}; // Cache for friend public keys (objects)
-let ownPublicKeyObject = null; // Stored parsed public key object for self-encryption
+let friendPublicKeys = {};
+let ownPublicKeyObject = null;
 
 // DOM Elements
 const userNameDisplay = document.getElementById("userNameDisplay");
@@ -37,6 +37,7 @@ const suspiciousPatterns = [
   /https?:\/\/.*(paypal|google|facebook|instagram|microsoft|whatsapp)\.[^\.]+?\.(tk|ml|ga|cf|gq|xyz|top)/i,
   /%[0-9a-f]{2}/i,
   /[\u200B-\u200F\u202A-\u202E]/,
+  // NEW: Pattern for common executable/archive file extensions
   /\.(apk|exe|zip|rar|bat|sh|jar|msi|vbs|cmd)(\/|\?|$)/i,
 ];
 
@@ -52,10 +53,9 @@ function isMaliciousContent(message) {
 
 // --- Initialization on page load ---
 document.addEventListener("DOMContentLoaded", async () => {
-    // This check is duplicated in auth.js; it ensures chat.js doesn't run if not logged in.
     if (!currentUser || !privateKeyPem || !publicKeyPem) {
-        // auth.js would have already handled the redirect/message
-        console.warn("Chat.js: Not logged in or missing cryptographic keys. Aborting chat.js initialization.");
+        alert("You are not logged in or missing cryptographic keys. Please log in first.");
+        window.location.href = "index.html";
         return;
     }
     userNameDisplay.textContent = currentUser;
@@ -64,8 +64,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         ownPublicKeyObject = await importPublicKey(publicKeyPem);
         console.log("✅ Successfully imported own public key.");
     } catch (e) {
-        console.error("❌ Error importing own public key for self-encryption:", e);
-        appendMessage("System", "Failed to load your public key. Sending messages may not work for history.", 'error');
+        console.error("❌ Error importing own public key:", e);
+        appendMessage("System", "Failed to load your public key. You may not be able to send messages for history.", 'error');
     }
 
     socket.emit("register_user", { username: currentUser });
@@ -84,7 +84,7 @@ function appendMessage(sender, message, type) {
         messageElement.textContent = `You: ${message}`;
     } else if (type === 'received') {
         messageElement.textContent = `${sender}: ${message}`;
-    } else if (type === 'system' || type === 'info' || type === 'error') {
+    } else {
         messageElement.textContent = message;
     }
 
@@ -113,7 +113,7 @@ async function importPublicKey(pem) {
             name: "RSA-OAEP",
             hash: "SHA-256"
         },
-        true, // extractable
+        true,
         ["encrypt"]
     );
 }
@@ -131,7 +131,7 @@ async function importPrivateKey(pem) {
             name: "RSA-OAEP",
             hash: "SHA-256"
         },
-        true, // extractable
+        true,
         ["decrypt"]
     );
 }
@@ -157,7 +157,7 @@ async function decryptMessage(encryptedBase64, privateKey) {
         return new TextDecoder().decode(decryptedBuffer);
     } catch (e) {
         console.error("Decryption failed:", e);
-        return "[Could not decrypt message]"; // Indicate decryption failure
+        return "[Could not decrypt message]";
     }
 }
 
@@ -174,8 +174,8 @@ socket.on('registered', (data) => {
     console.log("Backend registration confirmation:", data.message);
     if (data.onlineUsers) {
         console.log("Online users:", data.onlineUsers);
-        // socket.onlineUsers = data.onlineUsers; // Keep a local copy if needed, but fetchFriends updates based on live status
-        updateFriendOnlineStatus(data.onlineUsers);
+        socket.onlineUsers = data.onlineUsers;
+        updateFriendOnlineStatus(socket.onlineUsers);
     }
 });
 
@@ -199,7 +199,6 @@ socket.on('friend_request_sent', (data) => {
 });
 
 socket.on('friend_request_received', (data) => {
-    // Check if the request from this sender is already displayed (to prevent duplicates on re-connects)
     const existingRequest = document.getElementById(`request-${data.sender}`);
     if (existingRequest) {
         console.log(`Friend request from ${data.sender} already displayed.`);
@@ -213,19 +212,19 @@ socket.on('friend_request_received', (data) => {
     friendRequestElement.classList.add("friend-item", "request");
     friendRequestElement.innerHTML = `
         <span>${data.sender} (Pending Request)</span>
-        <div class="friend-actions">
+        <div>
             <button onclick="acceptFriendRequest('${data.sender}')" style="background-color: #28a745; width: auto; margin: 0 5px;">Accept</button>
             <button onclick="rejectFriendRequest('${data.sender}')" style="background-color: #dc3545; width: auto; margin: 0 5px;">Reject</button>
         </div>
     `;
-    friendsListUl.prepend(friendRequestElement); // Add to top of list
-    noFriendsMessage.style.display = 'none'; // Hide "No friends" message if a request comes in
+    friendsListUl.prepend(friendRequestElement);
+    noFriendsMessage.style.display = 'none';
 });
 
 socket.on('friend_request_accepted', (data) => {
     appendMessage("System", `${data.requester} accepted your friend request!`, 'info');
     displaySearchMessage(`${data.requester} is now your friend!`, false);
-    fetchFriends(); // Re-fetch friends list to update UI
+    fetchFriends();
 });
 
 socket.on('friend_request_rejected', (data) => {
@@ -235,7 +234,6 @@ socket.on('friend_request_rejected', (data) => {
     if (requestElement) {
         requestElement.remove();
     }
-    // Re-evaluate 'no friends' message if list becomes empty
     if (friendsContainer.querySelector('ul').children.length === 0) {
         noFriendsMessage.style.display = 'block';
     }
@@ -245,16 +243,6 @@ socket.on('friend_list_updated', async () => {
     console.log("Friend list updated by backend, re-fetching friends.");
     await fetchFriends();
 });
-
-socket.on('join_room_request', (room_id) => {
-    // If the server tells the client to join a room, respond
-    // This is useful for the receiving side of a chat initiation
-    console.log(`Received join_room_request for room: ${room_id}`);
-    // No explicit client-side join needed here for Socket.IO itself;
-    // the chat_approved event later will handle the UI and context.
-    // The server-side `join_room` is what truly connects the SID to the room.
-});
-
 
 socket.on('chat_approved', async (data) => {
     console.log(`Chat approved with: ${data.partner} in room: ${data.room}`);
@@ -266,7 +254,7 @@ socket.on('chat_approved', async (data) => {
     sendButton.removeAttribute("disabled");
     messageInput.focus();
 
-    chatBox.innerHTML = ''; // Clear existing chat history
+    chatBox.innerHTML = '';
     appendMessage("System", `You are now chatting with ${currentChatPartner}.`, 'info');
 
     if (data.history && data.history.length > 0) {
@@ -276,9 +264,6 @@ socket.on('chat_approved', async (data) => {
         for (const msg of data.history) {
             let decryptedMessage;
             try {
-                // History messages are stored encrypted with sender's public key (own public key for sender)
-                // So, to decrypt history, we use OUR private key, because when *we* sent it, it was encrypted for us.
-                // When we *received* it, it was also encrypted for us.
                 decryptedMessage = await decryptMessage(msg.message, privateKey);
             } catch (e) {
                 decryptedMessage = "[Could not decrypt message]";
@@ -295,11 +280,10 @@ socket.on('chat_approved', async (data) => {
         appendMessage("System", "No chat history found for this conversation.", 'info');
     }
 
-    // Update active chat styling
     const friendItems = document.querySelectorAll('.friend-item');
     friendItems.forEach(item => {
         item.classList.remove('active-chat');
-        item.classList.remove('new-message-indicator'); // Clear new message indicator when selected
+        item.classList.remove('new-message-indicator');
     });
     const selectedFriendElement = document.querySelector(`.friend-item[data-username="${currentChatPartner}"]`);
     if (selectedFriendElement) {
@@ -307,16 +291,15 @@ socket.on('chat_approved', async (data) => {
     }
 });
 
-// Event for messages received live from another user
 socket.on('receive_message', async (data) => {
-    console.log("Received live encrypted message:", data);
+    console.log("Received encrypted message:", data);
     if (data.room === currentChatRoom && data.sender === currentChatPartner) {
         try {
             const privateKey = await importPrivateKey(privateKeyPem);
             const decryptedMessage = await decryptMessage(data.message, privateKey);
             appendMessage(data.sender, decryptedMessage, 'received');
         } catch (error) {
-            console.error("Error decrypting received live message:", error);
+            console.error("Error decrypting received message:", error);
             appendMessage(data.sender, "[Encrypted Message - Decryption Error]", 'error');
         }
     } else {
@@ -328,29 +311,24 @@ socket.on('receive_message', async (data) => {
     }
 });
 
-// Event for confirmation that message was sent (less crucial for UI as we optimistically append)
-socket.on('message_sent_confirmation', (data) => {
-    console.log("Message sent confirmation from server:", data);
-    // You could use this to update message status (e.g., delivered tick)
+socket.on('online_users', (onlineUsers) => {
+    console.log("Updated online users:", onlineUsers);
+    socket.onlineUsers = onlineUsers;
+    updateFriendOnlineStatus(onlineUsers);
 });
 
-
-socket.on('friend_online_status_changed', (data) => {
-    console.log(`${data.username} is now ${data.status}.`);
-    // This event implicitly triggers `friend_list_updated` on the backend,
-    // which in turn calls `fetchFriends()` on the frontend.
-    // So, direct DOM manipulation here isn't strictly necessary if fetchFriends handles it.
-    // However, if you want immediate visual feedback without a full list re-render, you can.
+socket.on('user_disconnected', (data) => {
+    console.log(`${data.username} disconnected.`);
     const friendItem = document.querySelector(`.friend-item[data-username="${data.username}"]`);
     if (friendItem) {
-        friendItem.classList.remove('online', 'offline');
-        friendItem.classList.add(data.status);
+        friendItem.classList.remove('online');
+        item.classList.add('offline');
     }
 });
 
 // NEW Socket.IO Events for blocked messages
 socket.on('message_blocked', (data) => {
-    appendMessage("System", `🚫 Your message was blocked by the system due to ${data.reason.replace(/_/g, ' ')}.`, 'error');
+    appendMessage("System", `🚫 Your message was blocked by the system: ${data.reason.replace(/_/g, ' ')}.`, 'error');
     console.warn(`Message blocked: ${data.reason}`);
 });
 
@@ -360,39 +338,6 @@ socket.on('message_from_friend_blocked', (data) => {
 });
 // END NEW Socket.IO Events
 
-// NEW Socket.IO Events for unfriend
-socket.on('unfriended_success', (data) => {
-    appendMessage("System", `You have unfriended ${data.unfriendedUser}.`, 'info');
-    if (currentChatPartner === data.unfriendedUser) {
-        // If the unfriended user was the current chat partner, clear the chat UI
-        currentChatPartner = null;
-        currentChatRoom = null;
-        currentChatPartnerDisplay.textContent = "(Not chatting)";
-        chatBox.innerHTML = ''; // Clear chat history
-        messageInput.setAttribute("disabled", "true");
-        sendButton.setAttribute("disabled", "true");
-        appendMessage("System", "Chat session ended. Friend removed.", 'info');
-    }
-    fetchFriends(); // Re-fetch friends list to update UI
-});
-
-socket.on('you_were_unfriended', (data) => {
-    appendMessage("System", `😭 You were unfriended by ${data.unfriender}.`, 'info');
-    if (currentChatPartner === data.unfriender) {
-        // If the unfriender was the current chat partner, clear the chat UI
-        currentChatPartner = null;
-        currentChatRoom = null;
-        currentChatPartnerDisplay.textContent = "(Not chatting)";
-        chatBox.innerHTML = ''; // Clear chat history
-        messageInput.setAttribute("disabled", "true");
-        sendButton.setAttribute("disabled", "true");
-        appendMessage("System", "Chat session ended. This user is no longer your friend.", 'info');
-    }
-    fetchFriends(); // Re-fetch friends list to update UI
-});
-// END NEW Socket.IO Events for unfriend
-
-
 // --- Friends List Management ---
 
 async function fetchFriends() {
@@ -401,28 +346,27 @@ async function fetchFriends() {
         const data = await res.json();
 
         const friendsListUl = friendsContainer.querySelector('ul');
-        friendsListUl.innerHTML = ''; // Clear existing list before re-populating
+        friendsListUl.innerHTML = '';
 
         let hasFriendsOrRequests = false;
 
         if (data.friends && data.friends.length > 0) {
             data.friends.forEach(friend => {
-                // Ensure publicKey is a string to pass to addFriendToList
                 addFriendToList(friend.username, friend.status, friend.publicKey);
             });
             hasFriendsOrRequests = true;
+            updateFriendOnlineStatus(socket.onlineUsers || []);
         }
 
         if (data.pendingRequests && data.pendingRequests.length > 0) {
             data.pendingRequests.forEach(sender => {
-                // Ensure request is not already displayed, or update if it is
                 if (!document.getElementById(`request-${sender}`)) {
                     const friendRequestElement = document.createElement("li");
                     friendRequestElement.id = `request-${sender}`;
                     friendRequestElement.classList.add("friend-item", "request");
                     friendRequestElement.innerHTML = `
                         <span>${sender} (Pending Request)</span>
-                        <div class="friend-actions">
+                        <div>
                             <button onclick="acceptFriendRequest('${sender}')" style="background-color: #28a745; width: auto; margin: 0 5px;">Accept</button>
                             <button onclick="rejectFriendRequest('${sender}')" style="background-color: #dc3545; width: auto; margin: 0 5px;">Reject</button>
                         </div>
@@ -453,31 +397,14 @@ function addFriendToList(friendUsername, status = 'offline', publicKeyPemString)
         friendItem = document.createElement("li");
         friendItem.classList.add("friend-item");
         friendItem.setAttribute("data-username", friendUsername);
-        friendItem.innerHTML = `
-            <span>${friendUsername}</span>
-            <div class="friend-actions">
-                <button class="chat-btn" onclick="selectFriend('${friendUsername}')">Chat</button>
-                <button class="unfriend-btn" onclick="unfriendUser('${friendUsername}')">Unfriend</button>
-            </div>
-        `;
+        friendItem.innerHTML = `<span>${friendUsername}</span>`;
+        friendItem.addEventListener('click', () => selectFriend(friendUsername));
         friendsListUl.appendChild(friendItem);
-    } else {
-        // If friend item already exists, update its content to ensure correct buttons are present
-        // This handles cases where a pending request turns into a friend
-        friendItem.innerHTML = `
-            <span>${friendUsername}</span>
-            <div class="friend-actions">
-                <button class="chat-btn" onclick="selectFriend('${friendUsername}')">Chat</button>
-                <button class="unfriend-btn" onclick="unfriendUser('${friendUsername}')">Unfriend</button>
-            </div>
-        `;
     }
 
-    // Update status classes
     friendItem.classList.remove('online', 'offline', 'request');
     friendItem.classList.add(status);
 
-    // Cache public key if not already cached
     if (publicKeyPemString && !friendPublicKeys[friendUsername]) {
         importPublicKey(publicKeyPemString)
             .then(publicKeyObj => {
@@ -486,17 +413,7 @@ function addFriendToList(friendUsername, status = 'offline', publicKeyPemString)
             })
             .catch(error => console.error(`Error importing public key for ${friendUsername}:`, error));
     }
-
-    // If this friend is the current chat partner, ensure it's marked active
-    if (friendUsername === currentChatPartner) {
-        friendItem.classList.add('active-chat');
-    }
 }
-
-// Note: updateFriendOnlineStatus is implicitly handled by fetchFriends() which is called on friend_list_updated.
-// However, the friend_online_status_changed event provides more granular updates without full re-fetch.
-// The current `friend_online_status_changed` listener updates the specific item directly, which is efficient.
-// The `fetchFriends` still serves to re-render the entire list on major changes.
 
 function updateFriendOnlineStatus(onlineUsers) {
     const friendItems = document.querySelectorAll('.friend-item');
@@ -514,15 +431,12 @@ function updateFriendOnlineStatus(onlineUsers) {
     });
 }
 
-
 function selectFriend(friendUsername) {
-    // Clear active status and new message indicators from all friends
     const friendItems = document.querySelectorAll('.friend-item');
     friendItems.forEach(item => {
         item.classList.remove('active-chat');
         item.classList.remove('new-message-indicator');
     });
-    // Add active status to the newly selected friend
     const selectedFriendElement = document.querySelector(`.friend-item[data-username="${friendUsername}"]`);
     if (selectedFriendElement) {
         selectedFriendElement.classList.add('active-chat');
@@ -544,7 +458,6 @@ async function searchUser() {
         displaySearchMessage("You cannot search for yourself.", true);
         return;
     }
-    // Check if already a friend or a pending request
     const friendsListUl = friendsContainer.querySelector('ul');
     const existingFriend = friendsListUl.querySelector(`li[data-username="${searchUsername}"], li#request-${searchUsername}`);
     if (existingFriend) {
@@ -563,22 +476,24 @@ async function searchUser() {
 function acceptFriendRequest(senderUsername) {
     console.log(`Accepting request from: ${senderUsername}`);
     socket.emit('accept_friend_request', { acceptor: currentUser, requester: senderUsername });
-    // The fetchFriends() call in friend_list_updated will remove the request element.
+    const requestElement = document.getElementById(`request-${senderUsername}`);
+    if (requestElement) {
+        requestElement.remove();
+    }
+    fetchFriends();
 }
 
 function rejectFriendRequest(senderUsername) {
     console.log(`Rejecting request from: ${senderUsername}`);
     socket.emit('reject_friend_request', { rejecter: currentUser, requester: senderUsername });
-    // The fetchFriends() call in friend_list_updated will remove the request element.
-}
-
-// NEW: Unfriend Function
-function unfriendUser(unfriendedUsername) {
-    if (confirm(`Are you sure you want to unfriend ${unfriendedUsername}? This will remove them from your friends list and end the current chat.`)) {
-        socket.emit('unfriend_user', { unfriender: currentUser, unfriended: unfriendedUsername });
+    const requestElement = document.getElementById(`request-${senderUsername}`);
+    if (requestElement) {
+        requestElement.remove();
+    }
+    if (friendsContainer.querySelector('ul').children.length === 0) {
+        noFriendsMessage.style.display = 'block';
     }
 }
-// END NEW: Unfriend Function
 
 async function sendMessage() {
     const message = messageInput.value.trim();
@@ -600,7 +515,7 @@ async function sendMessage() {
     }
 
     if (!friendPublicKeys[currentChatPartner]) {
-        appendMessage("System", `Public key for ${currentChatPartner} not found. Cannot encrypt message for them.`, 'error');
+        appendMessage("System", `Public key for ${currentChatPartner} not found. Cannot encrypt message.`, 'error');
         console.error(`Public key missing for ${currentChatPartner}`);
         return;
     }
@@ -612,44 +527,32 @@ async function sendMessage() {
     }
 
     try {
-        // Encrypt message for the receiver using their public key
         const encryptedMessageForReceiver = await encryptMessage(message, friendPublicKeys[currentChatPartner]);
         console.log("Encrypted for receiver (first 50 chars):", encryptedMessageForReceiver.substring(0, 50) + '...');
 
-        // Encrypt message for self (for history and own display) using own public key
         const encryptedMessageForSelf = await encryptMessage(message, ownPublicKeyObject);
         console.log("Encrypted for self (first 50 chars):", encryptedMessageForSelf.substring(0, 50) + '...');
 
-        // Emit the message to the server
+        // Emit the message to the server, including the original unencrypted content for backend scanning
         socket.emit('send_message', {
             sender: currentUser,
             receiver: currentChatPartner,
             room: currentChatRoom,
-            messageForReceiver: encryptedMessageForReceiver, // For the actual receiver
-            messageForSelf: encryptedMessageForSelf,       // For sender's history storage
+            messageForReceiver: encryptedMessageForReceiver,
+            messageForSelf: encryptedMessageForSelf,
             originalMessageContent: message // IMPORTANT: Send unencrypted content for backend scan
         });
 
-        appendMessage("You", message, 'sent'); // Optimistic local append
-        messageInput.value = ""; // Clear input after sending
+        appendMessage("You", message, 'sent');
+        messageInput.value = "";
     } catch (error) {
         console.error("Error sending message:", error);
         appendMessage("System", "Failed to send message due to encryption error.", 'error');
     }
 }
 
-// Event listener for Enter key in message input
 messageInput.addEventListener('keypress', function (e) {
     if (e.key === 'Enter') {
         sendMessage();
     }
 });
-
-// Logout function (also defined in auth.js, but good to have here for direct call from chat UI)
-function logout() {
-    localStorage.removeItem("username");
-    localStorage.removeItem("privateKey");
-    localStorage.removeItem("publicKey");
-    // Reload the page to reset the app state and show login screen
-    window.location.reload();
-}
