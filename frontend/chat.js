@@ -1,4 +1,3 @@
-// ✅ chat.js
 const BASE_URL = "https://securechatapp-ys8y.onrender.com";
 const socket = io(BASE_URL);
 
@@ -7,7 +6,29 @@ document.getElementById("userNameDisplay").textContent = username;
 
 let room = null;
 let toUser = null;
-let aesKey = null; // Store AES key once exchanged
+let aesKey = null;
+
+// ⛔ Prevent XSS by escaping message content
+function escapeHTML(str) {
+  return str.replace(/[&<>"']/g, function (tag) {
+    const chars = {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;",
+    };
+    return chars[tag] || tag;
+  });
+}
+
+function getTimestamp() {
+  return new Date().toLocaleTimeString();
+}
+
+function generateRoomName(user1, user2) {
+  return [user1, user2].sort().join("_");
+}
 
 socket.on("connect", () => {
   console.log("Connected with Socket ID:", socket.id);
@@ -15,11 +36,6 @@ socket.on("connect", () => {
     socket.emit("register_user", { username });
   }
 });
-
-// Join a chat room with another user
-function generateRoomName(user1, user2) {
-  return [user1, user2].sort().join("_");
-}
 
 document.getElementById("joinBtn").onclick = async () => {
   toUser = document.getElementById("partnerInput").value.trim();
@@ -31,7 +47,7 @@ document.getElementById("joinBtn").onclick = async () => {
   room = generateRoomName(username, toUser);
   socket.emit("join", { room, username });
 
-  // 🔐 Request public key of the other user
+  // Request recipient's public key
   const response = await fetch(`${BASE_URL}/get_public_key?username=${toUser}`);
   const result = await response.json();
 
@@ -45,7 +61,6 @@ document.getElementById("joinBtn").onclick = async () => {
       ["encrypt", "decrypt"]
     );
 
-    // Export and encrypt AES key using RSA public key
     const aesKeyRaw = await window.crypto.subtle.exportKey("raw", aesKey);
     const importedPublicKey = await window.crypto.subtle.importKey(
       "spki",
@@ -54,6 +69,7 @@ document.getElementById("joinBtn").onclick = async () => {
       false,
       ["encrypt"]
     );
+
     const encryptedAES = await window.crypto.subtle.encrypt(
       { name: "RSA-OAEP" },
       importedPublicKey,
@@ -66,6 +82,8 @@ document.getElementById("joinBtn").onclick = async () => {
       to_user: toUser,
       encrypted_aes_key: encryptedAESBase64
     });
+
+    appendSystemMessage("🔐 AES key generated and sent. Waiting for response...");
   } else {
     alert("User not found or offline.");
   }
@@ -74,8 +92,14 @@ document.getElementById("joinBtn").onclick = async () => {
 socket.on("receive_aes_key_encrypted", async (data) => {
   const encryptedBase64 = data.encrypted_aes_key;
   const privateKeyPem = sessionStorage.getItem("privateKey");
-  const encryptedBytes = Uint8Array.from(atob(encryptedBase64), c => c.charCodeAt(0));
 
+  if (!privateKeyPem) {
+    alert("🔐 Private key missing. Please log in again.");
+    location.href = "index.html";
+    return;
+  }
+
+  const encryptedBytes = Uint8Array.from(atob(encryptedBase64), c => c.charCodeAt(0));
   const importedPrivateKey = await window.crypto.subtle.importKey(
     "pkcs8",
     pemToArrayBuffer(privateKeyPem),
@@ -99,6 +123,8 @@ socket.on("receive_aes_key_encrypted", async (data) => {
   );
 
   console.log("🔑 AES key exchanged successfully!");
+  appendSystemMessage("✅ Secure connection established. You may now chat.");
+
   document.getElementById("messageInput").disabled = false;
   document.getElementById("sendButton").disabled = false;
 });
@@ -135,22 +161,36 @@ document.getElementById("sendButton").onclick = async () => {
     message: encryptedBase64,
     room
   });
+
   input.value = "";
 };
 
 socket.on("receive_message", async (data) => {
+  if (!aesKey) return;
+
   const combined = Uint8Array.from(atob(data.message), c => c.charCodeAt(0));
   const iv = combined.slice(0, 12);
   const encryptedData = combined.slice(12);
 
-  const decrypted = await window.crypto.subtle.decrypt(
-    { name: "AES-GCM", iv },
-    aesKey,
-    encryptedData
-  );
+  try {
+    const decrypted = await window.crypto.subtle.decrypt(
+      { name: "AES-GCM", iv },
+      aesKey,
+      encryptedData
+    );
 
-  const message = new TextDecoder().decode(decrypted);
-  const div = document.createElement("div");
-  div.textContent = `${data.username}: ${message}`;
-  document.getElementById("chatBox").appendChild(div);
+    const message = new TextDecoder().decode(decrypted);
+    const div = document.createElement("div");
+    div.innerHTML = `<strong>${escapeHTML(data.username)}</strong> [${getTimestamp()}]: ${escapeHTML(message)}`;
+    document.getElementById("chatBox").appendChild(div);
+  } catch (e) {
+    console.error("Decryption failed:", e);
+  }
 });
+
+function appendSystemMessage(msg) {
+  const div = document.createElement("div");
+  div.innerHTML = `<em>[${getTimestamp()}] ${escapeHTML(msg)}</em>`;
+  div.style.color = "gray";
+  document.getElementById("chatBox").appendChild(div);
+}
