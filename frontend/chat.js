@@ -37,7 +37,7 @@ function displayChatMessage(message, type = 'info') {
 
 // Helper functions for ArrayBuffer <-> Base64 conversion
 // This is more robust for encrypted binary data than String.fromCharCode + btoa directly
-function arrayBufferToBase64(buffer) { // Corrected from Base66
+function arrayBufferToBase64(buffer) {
     let binary = '';
     const bytes = new Uint8Array(buffer);
     const len = bytes.byteLength;
@@ -47,7 +47,7 @@ function arrayBufferToBase64(buffer) { // Corrected from Base66
     return btoa(binary);
 }
 
-function base64ToArrayBuffer(base64) { // Corrected from Base66
+function base64ToArrayBuffer(base64) {
     const binary_string = atob(base64);
     const len = binary_string.length;
     const bytes = new Uint8Array(len);
@@ -60,7 +60,7 @@ function base64ToArrayBuffer(base64) { // Corrected from Base66
 
 // AES Encryption Utility (client-side implementation using Web Crypto API)
 class AesEncryption {
-  static async encrypt(message, keyBase64) { // Corrected from keyBase66
+  static async encrypt(message, keyBase64) {
     // Decode Base64 key string back to Uint8Array
     const keyBytes = Uint8Array.from(atob(keyBase64), c => c.charCodeAt(0));
 
@@ -92,7 +92,7 @@ class AesEncryption {
     return btoa(String.fromCharCode(...combined));
   }
 
-  static async decrypt(encryptedBase64, keyBase64) { // Corrected from encryptedBase66, keyBase66
+  static async decrypt(encryptedBase64, keyBase64) {
     // Decode Base64 key string back to Uint8Array
     const keyBytes = Uint8Array.from(atob(keyBase64), c => c.charCodeAt(0));
 
@@ -268,7 +268,8 @@ async function startDirectChat(friendUsername) {
 
 
 // --- User Authentication and Setup ---
-const username = sessionStorage.getItem("username");
+// Trim username when retrieved from sessionStorage
+const username = sessionStorage.getItem("username")?.trim();
 if (!username) {
   displayChatMessage("You are not logged in. Please log in.", 'error');
   window.location.href = "index.html";
@@ -325,7 +326,7 @@ socket.on("chat_request", (data) => {
     const roomName = generateRoomName(username, fromUser);
     currentRoom = roomName;
     chattingWith = fromUser;
-    socket.emit("join", { room: roomName, username });
+    socket.emit("join", { room: roomName, username: username });
     // As the accepter, you wait for the requester to send the encrypted AES key.
     // The keyExchangeInitiated flag on the requester side will prevent multiple sends.
   } else {
@@ -343,7 +344,7 @@ socket.on("chat_request_approved", async (data) => {
 
     currentRoom = roomName;
     chattingWith = data.by_user;
-    socket.emit("join", { room: roomName, username });
+    socket.emit("join", { room: roomName, username: username });
     // If I initiated the request and it's approved, I generate and send the AES key
     await generateAndSendAesKey(chattingWith);
 
@@ -362,10 +363,10 @@ socket.on("chat_request_approved", async (data) => {
 socket.on('receive_aes_key_encrypted', async (data) => {
   console.log("🔑 Received encrypted AES key event.");
   try {
-    const encryptedAesKeyBase64 = data.encrypted_aes_key; // Corrected variable name
+    const encryptedAesKeyBase64 = data.encrypted_aes_key;
     const sender = data.from_user;
 
-    console.log("Received encrypted AES Key (Base64):", encryptedAesKeyBase64); // Corrected log
+    console.log("Received encrypted AES Key (Base64):", encryptedAesKeyBase64);
 
     const privateKey = await getMyPrivateKey();
     if (!privateKey) {
@@ -380,7 +381,7 @@ socket.on('receive_aes_key_encrypted', async (data) => {
 
     // Decrypt the AES key using my RSA private key
     // Use the robust base64ToArrayBuffer for decryption input
-    const encryptedKeyBuffer = base64ToArrayBuffer(encryptedAesKeyBase64); // Corrected function name
+    const encryptedKeyBuffer = base64ToArrayBuffer(encryptedAesKeyBase64);
     console.log("Encrypted AES Key Buffer length for decryption:", encryptedKeyBuffer.byteLength);
 
     const decryptedAesKeyBytes = await window.crypto.subtle.decrypt(
@@ -481,7 +482,7 @@ socket.on("receive_message", async (data) => {
     displayChatMessage(`${senderUsername}: ${decryptedMessage}`, senderUsername === username ? 'sent' : 'received');
   } catch (e) {
     console.error("❌ Decryption failed", e);
-    displayChatMessage(`${data.username}: 🔒 (Unable to decrypt message)`, 'error');
+    displayChatMessage(`${data.username}: � (Unable to decrypt message)`, 'error');
   }
 });
 
@@ -551,7 +552,7 @@ async function generateAndSendAesKey(recipientUsername) {
     const newAesKey = await AesEncryption.generateRandomAesKey();
     currentChatKey = newAesKey; // Set my current chat key
 
-    console.log("Generated new AES Key (Base64):", newAesKey); // Corrected log
+    console.log("Generated new AES Key (Base64):", newAesKey);
 
     const recipientPublicKey = await fetchPublicKey(recipientUsername);
     if (!recipientPublicKey) {
@@ -569,9 +570,9 @@ async function generateAndSendAesKey(recipientUsername) {
       recipientPublicKey,
       encoder.encode(newAesKey)
     );
-    // Use the robust arrayBufferToBase4 for encryption output
-    const encryptedAesKeyBase64 = arrayBufferToBase64(encryptedAesKeyBuffer); // Corrected function name
-    console.log("🔑 Encrypted AES Key (Base64 for transport):", encryptedAesKeyBase64); // Corrected log
+    // Use the robust arrayBufferToBase64 for encryption output
+    const encryptedAesKeyBase64 = arrayBufferToBase64(encryptedAesKeyBuffer);
+    console.log("🔑 Encrypted AES Key (Base64 for transport):", encryptedAesKeyBase64);
 
 
     socket.emit('send_aes_key_encrypted', {
@@ -603,7 +604,7 @@ async function sendMessage() {
   }
 
   try {
-    const encryptedBase64 = await AesEncryption.encrypt(message, currentChatKey); // Corrected function name
+    const encryptedBase64 = await AesEncryption.encrypt(message, currentChatKey);
 
     displayChatMessage(`You: ${message}`, 'sent');
 
