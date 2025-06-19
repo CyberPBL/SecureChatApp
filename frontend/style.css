@@ -5,7 +5,7 @@ body {
   color: #c9d1d9; /* Light text */
 }
 
-.container, .chat-container {
+.container, .chat-container, .auth-container { /* Added .auth-container */
   max-width: 500px;
   margin: 60px auto;
   padding: 30px;
