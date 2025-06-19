@@ -1,4 +1,4 @@
-// --- Updated app.py with AES-GCM, secure scanning, case-insensitive search, and key logging ---
+# --- Updated app.py with AES-GCM, secure scanning, case-insensitive search, and key logging ---
 
 import eventlet
 eventlet.monkey_patch()
