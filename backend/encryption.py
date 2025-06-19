@@ -1,11 +1,10 @@
-# --- Updated encryption.py with AES-GCM Support ---
-
 from Crypto.Cipher import AES, PKCS1_OAEP
-from Crypto.Util.Padding import pad, unpad
+from Crypto.Util.Padding import pad, unpad  # Not needed in GCM but useful for other modes
 from Crypto.PublicKey import RSA
 from Crypto.Hash import SHA256
 import base64
 import os
+
 
 class RSAEncryption:
     @staticmethod
@@ -33,6 +32,7 @@ class RSAEncryption:
             print(f"❌ Decryption Error (RSA): {e}")
             raise
 
+
 class AesEncryption:
     @staticmethod
     def encrypt(message: str, key: str) -> str:
@@ -40,9 +40,11 @@ class AesEncryption:
         if len(key_bytes) != 32:
             raise ValueError("AES-GCM key must be 32 bytes for AES-256.")
 
-        iv = os.urandom(12)  # 12 bytes IV for GCM
+        iv = os.urandom(12)  # Recommended IV length for GCM
         cipher = AES.new(key_bytes, AES.MODE_GCM, nonce=iv)
         ciphertext, tag = cipher.encrypt_and_digest(message.encode('utf-8'))
+
+        # Payload = IV + Tag + Ciphertext
         payload = iv + tag + ciphertext
         return base64.b64encode(payload).decode('utf-8')
 
@@ -52,13 +54,13 @@ class AesEncryption:
         if len(key_bytes) != 32:
             raise ValueError("AES-GCM key must be 32 bytes for AES-256.")
 
-        data = base64.b64decode(encrypted_message_b64)
-        iv = data[:12]
-        tag = data[12:28]
-        ciphertext = data[28:]
-
-        cipher = AES.new(key_bytes, AES.MODE_GCM, nonce=iv)
         try:
+            data = base64.b64decode(encrypted_message_b64)
+            iv = data[:12]
+            tag = data[12:28]
+            ciphertext = data[28:]
+
+            cipher = AES.new(key_bytes, AES.MODE_GCM, nonce=iv)
             decrypted = cipher.decrypt_and_verify(ciphertext, tag)
             return decrypted.decode('utf-8')
         except Exception as e:
