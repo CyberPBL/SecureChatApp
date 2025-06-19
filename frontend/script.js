@@ -1,5 +1,3 @@
-// script.js (Auth/Login/Register File)
-
 const BASE_URL = "https://securechatapp-ys8y.onrender.com";
 console.log("Connecting to backend for auth operations:", BASE_URL);
 
@@ -63,10 +61,10 @@ async function registerUser() {
         const privateKeyBase64 = btoa(String.fromCharCode(...new Uint8Array(privateKeyBuffer)));
         const privateKeyPem = `-----BEGIN PRIVATE KEY-----\n${privateKeyBase64.match(/.{1,64}/g).join("\n")}\n-----END PRIVATE KEY-----`;
 
-        // Store private key, username, AND PUBLIC KEY in sessionStorage for later use in chat.js
-        sessionStorage.setItem("privateKey", privateKeyPem);
-        sessionStorage.setItem("username", username);
-        sessionStorage.setItem("publicKey", publicKeyPem); // <<< ADDED THIS LINE <<<
+        // Store private key, username, AND PUBLIC KEY in localStorage for later use in chat.js (CORRECTED HERE)
+        localStorage.setItem("privateKey", privateKeyPem);
+        localStorage.setItem("username", username);
+        localStorage.setItem("publicKey", publicKeyPem); // <<< CORRECTED HERE <<<
 
         console.log("Attempting to register user:", { username, publicKeyPem: publicKeyPem.substring(0, 50) + '...' });
 
@@ -112,22 +110,20 @@ async function loginUser(username = null, pin = null) {
 
         const data = await res.json();
         if (data.success) {
-            sessionStorage.setItem("username", currentUsername);
+            localStorage.setItem("username", currentUsername); // CORRECTED HERE
             displayAuthMessage("✅ Login successful, redirecting...", false);
 
-            // Fetch current user's public key from backend if not in session storage (e.g., new device login, or browser cleared session)
-            const storedPublicKey = sessionStorage.getItem("publicKey");
+            // Fetch current user's public key from backend if not in local storage (e.g., new device login, or browser cleared local storage)
+            const storedPublicKey = localStorage.getItem("publicKey"); // CORRECTED HERE
             if (!storedPublicKey) {
                 console.log("Fetching own public key after login...");
                 const pkRes = await fetch(`${BASE_URL}/get_public_key?username=${currentUsername}`);
                 const pkData = await pkRes.json();
                 if (pkData.success) {
-                    sessionStorage.setItem("publicKey", pkData.public_key);
+                    localStorage.setItem("publicKey", pkData.public_key); // CORRECTED HERE
                     console.log("Fetched and stored own public key.");
                 } else {
                     console.warn("Could not fetch own public key after login:", pkData.message);
-                    // This might cause issues with encrypting messages for self, as a fallback,
-                    // consider warning the user or gracefully degrading functionality.
                 }
             }
 
