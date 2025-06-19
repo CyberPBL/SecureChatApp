@@ -1,6 +1,6 @@
 // chat.js
 
-const BASE_URL = "https://securechatapp-ys8y.onrender.com";
+const BASE_URL = "https://securechatapp-ys8y.onrender.com"; // Ensure this matches your backend URL
 const socket = io(BASE_URL);
 
 // Retrieve user info and private key from sessionStorage
@@ -23,7 +23,7 @@ const friendsContainer = document.getElementById("friendsContainer");
 const noFriendsMessage = document.getElementById("noFriendsMessage");
 const currentChatPartnerDisplay = document.getElementById("currentChatPartner");
 
-// --- NEW: Malicious Content Patterns and Checker Function ---
+// --- Malicious Content Patterns and Checker Function ---
 const suspiciousPatterns = [
   /https?:\/\/(?:bit\.ly|tinyurl\.com|goo\.gl|t\.co|rb\.gy|is\.gd|shorte\.st|adf\.ly|rebrand\.ly|cutt\.ly|buff\.ly|lnkd\.in|bl\.ink|trib\.al|snip\.ly|shorturl\.at|shrtco\.de|short\.cm|v\.gd|zi\.mu)/i,
   /https?:\/\/.*\.(tk|ml|ga|cf|gq|xyz|top|club|pw|info)(\/|$)/i,
@@ -37,6 +37,8 @@ const suspiciousPatterns = [
   /https?:\/\/.*(paypal|google|facebook|instagram|microsoft|whatsapp)\.[^\.]+?\.(tk|ml|ga|cf|gq|xyz|top)/i,
   /%[0-9a-f]{2}/i,
   /[\u200B-\u200F\u202A-\u202E]/,
+  // NEW: Pattern for common executable/archive file extensions
+  /\.(apk|exe|zip|rar|bat|sh|jar|msi|vbs|cmd)(\/|\?|$)/i,
 ];
 
 function isMaliciousContent(message) {
@@ -47,7 +49,7 @@ function isMaliciousContent(message) {
     }
     return false;
 }
-// --- END NEW ---
+// --- END Malicious Content Detection ---
 
 // --- Initialization on page load ---
 document.addEventListener("DOMContentLoaded", async () => {
@@ -72,7 +74,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     await fetchFriends();
 });
 
-// --- Utility Functions for UI and Cryptography (No changes here, copied from your provided code) ---
+// --- Utility Functions for UI and Cryptography ---
 
 function appendMessage(sender, message, type) {
     const messageElement = document.createElement("div");
@@ -159,7 +161,7 @@ async function decryptMessage(encryptedBase64, privateKey) {
     }
 }
 
-// --- Socket.IO Event Handlers (NEW listeners for blocked messages) ---
+// --- Socket.IO Event Handlers ---
 
 socket.on('connect', () => {
     console.log("✅ Socket.IO connected with ID:", socket.id);
@@ -320,11 +322,11 @@ socket.on('user_disconnected', (data) => {
     const friendItem = document.querySelector(`.friend-item[data-username="${data.username}"]`);
     if (friendItem) {
         friendItem.classList.remove('online');
-        friendItem.classList.add('offline');
+        item.classList.add('offline');
     }
 });
 
-// --- NEW Socket.IO Events for blocked messages ---
+// NEW Socket.IO Events for blocked messages
 socket.on('message_blocked', (data) => {
     appendMessage("System", `🚫 Your message was blocked by the system: ${data.reason.replace(/_/g, ' ')}.`, 'error');
     console.warn(`Message blocked: ${data.reason}`);
@@ -334,9 +336,9 @@ socket.on('message_from_friend_blocked', (data) => {
     appendMessage("System", `🚫 A message from ${data.sender} was blocked by the system due to suspicious content.`, 'info');
     console.warn(`Message from ${data.sender} blocked by system: ${data.reason}`);
 });
-// --- END NEW ---
+// END NEW Socket.IO Events
 
-// --- Friends List Management (No changes here, copied from your provided code) ---
+// --- Friends List Management ---
 
 async function fetchFriends() {
     try {
@@ -444,7 +446,7 @@ function selectFriend(friendUsername) {
     socket.emit('request_chat', { sender: currentUser, receiver: friendUsername });
 }
 
-// --- User Interaction Functions (MODIFIED sendMessage) ---
+// --- User Interaction Functions ---
 
 async function searchUser() {
     const searchUsername = document.getElementById("searchUser").value.trim();
@@ -504,14 +506,13 @@ async function sendMessage() {
         return;
     }
 
-    // --- NEW: Frontend malicious content check ---
+    // Frontend malicious content check
     if (isMaliciousContent(message)) {
         appendMessage("System", "🚫 Your message contains suspicious content and cannot be sent.", 'error');
         console.warn("Message blocked locally: Contains suspicious content.");
         messageInput.value = ""; // Clear input
         return; // Prevent sending
     }
-    // --- END NEW ---
 
     if (!friendPublicKeys[currentChatPartner]) {
         appendMessage("System", `Public key for ${currentChatPartner} not found. Cannot encrypt message.`, 'error');
@@ -539,7 +540,7 @@ async function sendMessage() {
             room: currentChatRoom,
             messageForReceiver: encryptedMessageForReceiver,
             messageForSelf: encryptedMessageForSelf,
-            originalMessageContent: message // <<< IMPORTANT: Send unencrypted content for backend scan
+            originalMessageContent: message // IMPORTANT: Send unencrypted content for backend scan
         });
 
         appendMessage("You", message, 'sent');
