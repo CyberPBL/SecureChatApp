@@ -1,12 +1,10 @@
-// chat.js
-
 const BASE_URL = "https://securechatapp-ys8y.onrender.com"; // Ensure this matches your backend URL
 const socket = io(BASE_URL);
 
-// Retrieve user info and private key from sessionStorage
-let currentUser = sessionStorage.getItem("username");
-let privateKeyPem = sessionStorage.getItem("privateKey");
-let publicKeyPem = sessionStorage.getItem("publicKey");
+// Retrieve user info and private key from localStorage (CORRECTED HERE)
+let currentUser = localStorage.getItem("username");
+let privateKeyPem = localStorage.getItem("privateKey");
+let publicKeyPem = localStorage.getItem("publicKey");
 
 let currentChatPartner = null;
 let currentChatRoom = null;
@@ -322,7 +320,7 @@ socket.on('user_disconnected', (data) => {
     const friendItem = document.querySelector(`.friend-item[data-username="${data.username}"]`);
     if (friendItem) {
         friendItem.classList.remove('online');
-        item.classList.add('offline');
+        friendItem.classList.add('offline'); // CORRECTED HERE
     }
 });
 
@@ -355,7 +353,10 @@ async function fetchFriends() {
                 addFriendToList(friend.username, friend.status, friend.publicKey);
             });
             hasFriendsOrRequests = true;
-            updateFriendOnlineStatus(socket.onlineUsers || []);
+            // Ensure socket.onlineUsers is available before calling updateFriendOnlineStatus (IMPROVEMENT)
+            if (socket.onlineUsers) {
+                updateFriendOnlineStatus(socket.onlineUsers);
+            }
         }
 
         if (data.pendingRequests && data.pendingRequests.length > 0) {
