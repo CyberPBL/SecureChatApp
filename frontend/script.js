@@ -1,47 +1,47 @@
-const BASE_URL = "https://securechatapp-ys8y.onrender.com"; // ✅ Must be your backend URL
+// script.js
+
+const BASE_URL = "https://securechatapp-ys8y.onrender.com";
 console.log("Connecting to backend:", BASE_URL);
 
-const socket = io(BASE_URL); // Connect to Flask backend's Socket.IO
+// Initialize Socket.IO connection
+const socket = io(BASE_URL);
 
-// ✅ Check for private key on page load
-window.addEventListener("DOMContentLoaded", () => {
-  const username = sessionStorage.getItem("username");
-  const privateKey = sessionStorage.getItem("privateKey");
-
-  if (username && !privateKey) {
-    displayAuthMessage("⚠️ Logged in but private key is missing. Please re-register.", true);
-  }
-});
-
+/**
+ * Displays a message in the authMessage element.
+ * @param {string} message The message to display.
+ * @param {boolean} isError True if it's an error message (red text), false otherwise (green text).
+ */
 function displayAuthMessage(message, isError = false) {
   const authMessageElement = document.getElementById("authMessage");
   authMessageElement.textContent = message;
   authMessageElement.style.color = isError ? "red" : "green";
-
   setTimeout(() => {
     authMessageElement.textContent = "";
   }, 5000);
 }
 
-// --- SOCKET EVENTS ---
-socket.on("connect", () => {
+// --- Event Listener for Socket.IO Connection ---
+socket.on('connect', () => {
+  console.log("✅ Socket.IO connected with ID:", socket.id);
   const username = sessionStorage.getItem("username")?.trim();
   if (username) {
-    socket.emit("register_user", { username });
-    console.log(`✅ Socket connected and registered as ${username}`);
+    socket.emit("register_user", { username: username });
+    console.log(`Sending 'register_user' for: ${username}`);
+  } else {
+    console.log("No username found in sessionStorage to register upon connect.");
   }
 });
 
-socket.on("registered", (data) => {
-  console.log("🔔 Backend confirmation:", data.message);
+socket.on('registered', (data) => {
+  console.log("Backend registration confirmation:", data.message);
 });
 
-socket.on("error", (data) => {
-  console.error("❌ Backend error:", data.message);
+socket.on('error', (data) => {
+  console.error("Backend error:", data.message);
   displayAuthMessage("Error: " + data.message, true);
 });
 
-// --- USER REGISTRATION ---
+// --- User Registration Function ---
 async function registerUser() {
   const username = document.getElementById("anonymousId").value.trim();
   const pin = document.getElementById("securePin").value;
@@ -59,56 +59,49 @@ async function registerUser() {
         publicExponent: new Uint8Array([1, 0, 1]),
         hash: "SHA-256"
       },
-      true,
+      true, // extractable
       ["encrypt", "decrypt"]
     );
 
-    const publicKeyBuffer = await crypto.subtle.exportKey("spki", keyPair.publicKey);
+    const publicKeyBuffer = await window.crypto.subtle.exportKey("spki", keyPair.publicKey);
     const publicKeyBase64 = btoa(String.fromCharCode(...new Uint8Array(publicKeyBuffer)));
     const publicKeyPem = `-----BEGIN PUBLIC KEY-----\n${publicKeyBase64.match(/.{1,64}/g).join("\n")}\n-----END PUBLIC KEY-----`;
 
-    const privateKeyBuffer = await crypto.subtle.exportKey("pkcs8", keyPair.privateKey);
+    console.log("✅ Public Key PEM (first 50 chars):\n", publicKeyPem.substring(0, 50) + '...');
+
+    const privateKeyBuffer = await window.crypto.subtle.exportKey("pkcs8", keyPair.privateKey);
     const privateKeyBase64 = btoa(String.fromCharCode(...new Uint8Array(privateKeyBuffer)));
     const privateKeyPem = `-----BEGIN PRIVATE KEY-----\n${privateKeyBase64.match(/.{1,64}/g).join("\n")}\n-----END PRIVATE KEY-----`;
 
     sessionStorage.setItem("privateKey", privateKeyPem);
     sessionStorage.setItem("username", username);
 
+    console.log("Registering user:", { username, pin, publicKeyPem: publicKeyPem.substring(0, 50) + '...' });
+
     const res = await fetch(`${BASE_URL}/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, pin, publicKey: publicKeyPem })
+      body: JSON.stringify({
+        username,
+        pin,
+        publicKey: publicKeyPem
+      })
     });
 
-    let data;
-    try {
-      data = await res.json();
-    } catch (e) {
-      const raw = await res.text();
-      console.error("❌ Invalid JSON from /register:", raw);
-      displayAuthMessage("❌ Server error during registration", true);
-      return;
-    }
-
-    if (res.status === 409) {
-      displayAuthMessage("⚠️ Username already exists. Try logging in.", true);
-      return;
-    }
-
+    const data = await res.json();
     if (data.success) {
-      displayAuthMessage("✅ Registered successfully");
-      loginUser(username, pin); // Auto-login
+      displayAuthMessage("✅ Registered successfully", false);
+      loginUser(username, pin);
     } else {
       displayAuthMessage("❌ " + data.message, true);
     }
-
   } catch (error) {
-    console.error("Registration failed:", error);
-    displayAuthMessage("❌ Error: " + error.message, true);
+    console.error("Error during registration:", error);
+    displayAuthMessage("❌ Registration failed: " + error.message, true);
   }
 }
 
-// --- USER LOGIN ---
+// --- User Login Function ---
 async function loginUser(username = null, pin = null) {
   const currentUsername = (username || document.getElementById("anonymousId").value).trim();
   const currentPin = (pin || document.getElementById("securePin").value);
@@ -125,25 +118,16 @@ async function loginUser(username = null, pin = null) {
       body: JSON.stringify({ username: currentUsername, pin: currentPin })
     });
 
-    let data;
-    try {
-      data = await res.json();
-    } catch (e) {
-      const raw = await res.text();
-      console.error("❌ Invalid JSON from /login:", raw);
-      displayAuthMessage("❌ Server error during login", true);
-      return;
-    }
-
+    const data = await res.json();
     if (data.success) {
       sessionStorage.setItem("username", currentUsername);
-      displayAuthMessage("✅ Login successful. Redirecting...");
+      displayAuthMessage("✅ Login successful, redirecting...", false);
       window.location.href = "chat.html";
     } else {
-      displayAuthMessage("❌ Login failed: " + data.message, true);
+      displayAuthMessage("Login failed: " + data.message, true);
     }
   } catch (error) {
-    console.error("Login error:", error);
-    displayAuthMessage("❌ Login error: " + error.message, true);
+    console.error("Error during login:", error);
+    displayAuthMessage("Login failed: " + error.message, true);
   }
 }
