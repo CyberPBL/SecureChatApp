@@ -1,20 +1,78 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>SecureChat - Login/Register</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SecureChat</title>
     <link rel="stylesheet" href="style.css">
-    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+    <link rel="icon" type="image/x-icon" href="https://securechat-frontend-9qs2.onrender.com/favicon.ico">
 </head>
 <body>
-    <div class="auth-container">
-        <h2>SecureChat</h2>
-        <input type="text" id="anonymousId" placeholder="Enter Username" required />
-        <input type="password" id="securePin" placeholder="Enter PIN" required />
-        <button onclick="registerUser()">Register</button>
-        <button onclick="loginUser()">Login</button>
-        <p id="authMessage"></p>
+    <div class="auth-container" id="authContainer">
+        <h2>Welcome to SecureChat</h2>
+        <div class="auth-tabs">
+            <button class="auth-tab-btn active" id="loginTab">Login</button>
+            <button class="auth-tab-btn" id="registerTab">Register</button>
+        </div>
+
+        <div id="loginForm" class="auth-form active">
+            <h3>Login</h3>
+            <input type="text" id="loginUsername" placeholder="Username" required>
+            <input type="password" id="loginPin" placeholder="PIN" required>
+            <button onclick="loginUser()">Login</button>
+            <p id="loginMessage" class="message"></p>
+        </div>
+
+        <div id="registerForm" class="auth-form">
+            <h3>Register</h3>
+            <input type="text" id="registerUsername" placeholder="Username" required>
+            <input type="password" id="registerPin" placeholder="PIN (4-6 digits)" required maxlength="6">
+            <input type="password" id="confirmPin" placeholder="Confirm PIN" required maxlength="6">
+            <button onclick="registerUser()">Register</button>
+            <p id="registerMessage" class="message"></p>
+        </div>
     </div>
 
-    <script src="script.js"></script>
+    <div class="chat-container" id="chatContainer" style="display: none;">
+        <header>
+            <h1>SecureChat</h1>
+            <div class="user-info">
+                <span>Logged in as: <strong id="userNameDisplay"></strong></span>
+                <button onclick="logout()">Logout</button>
+            </div>
+        </header>
+
+        <div class="main-content">
+            <div class="left-panel">
+                <h3>Friends</h3>
+                <div class="search-user">
+                    <input type="text" id="searchUser" placeholder="Search for user...">
+                    <button onclick="searchUser()">Search</button>
+                </div>
+                <p id="searchMessage" class="message"></p>
+                <div id="noFriendsMessage" style="text-align: center; color: #888; margin-top: 10px; display: none;">
+                    No friends yet. Search for users to add!
+                </div>
+                <ul id="friendsContainer" class="friends-list">
+                    </ul>
+            </div>
+
+            <div class="chat-panel">
+                <div class="chat-header">
+                    <h2>Chat Box <span id="currentChatPartner">(Not chatting)</span></h2>
+                </div>
+                <div class="chat-box" id="chatBox">
+                    </div>
+                <div class="message-input">
+                    <input type="text" id="messageInput" placeholder="Type your message..." disabled>
+                    <button id="sendButton" onclick="sendMessage()" disabled>Send</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.0/socket.io.js"></script>
+    <script src="auth.js"></script>
+    <script src="chat.js"></script>
 </body>
 </html>
