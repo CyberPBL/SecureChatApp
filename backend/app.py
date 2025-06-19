@@ -311,15 +311,15 @@ def handle_send_aes_key_encrypted(data):
         return
     socketio.start_background_task(_send_aes_key_encrypted_background, from_user, to_user, encrypted_aes_key, request.sid)
 
-def _join_background(room, username, sid):
+def _join_background(room, username, sid_from_request): # Added sid_from_request parameter
     with app.app_context(): # ✅ Push app context
-        join_room(room)
+        join_room(room, sid=sid_from_request) # Explicitly pass sid
         print(f"{username} joined room {room}")
         chat_partner = room.replace(username + '_', '').replace('_' + username, '')
-        socketio.emit('chat_approved', {'with': chat_partner, 'room': room}, room=sid)
-
+        socketio.emit('chat_approved', {'with': chat_partner, 'room': room}, room=sid_from_request) # Use sid_from_request
+        # If the user just joined, fetch and send chat history
         history = list(messages_collection.find({"room": room}).sort("timestamp", 1))
-        socketio.emit('chat_history', {'history': history}, room=sid)
+        socketio.emit('chat_history', {'history': history}, room=sid_from_request) # Use sid_from_request
         print(f"📜 Chat history for room {room} sent to {username}.")
 
 @socketio.on('join')
@@ -327,11 +327,12 @@ def handle_join(data):
     room = data.get('room')
     username = data.get('username')
     if room and username:
+        # Pass request.sid to the background task
         socketio.start_background_task(_join_background, room, username, request.sid)
     else:
         emit('error', {'message': 'Missing room or username in join.'}, room=request.sid)
 
-def _send_message_background(from_user, to_user, message, room, sender_sid):
+def _send_message_background(from_user, to_user, message, room, sender_sid): # Added sender_sid for consistency
     with app.app_context(): # ✅ Push app context
         messages_collection.insert_one({
             "from_user": from_user,
