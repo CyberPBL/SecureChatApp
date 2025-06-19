@@ -15,7 +15,17 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
 
 # Import the AesEncryption and RSAEncryption classes from your encryption.py
-from encryption import AesEncryption, RSAEncryption
+# Assuming encryption.py is in the same directory and contains necessary classes
+try:
+    from encryption import AesEncryption, RSAEncryption
+except ImportError:
+    print("WARNING: encryption.py not found or classes missing. RSA/AES functionality might be impaired.")
+    # Define dummy classes if encryption.py is missing to prevent crash during Flask startup
+    class AesEncryption:
+        pass
+    class RSAEncryption:
+        pass
+
 
 # Load environment variables from .env file
 load_dotenv()
@@ -281,6 +291,8 @@ def _send_aes_key_encrypted_background(from_user, to_user, encrypted_aes_key, se
         target_user = users_collection.find_one({"username": to_user})
         if target_user and "socket_id" in target_user and target_user["socket_id"] is not None and target_user["socket_id"] != "":
             target_sid = target_user["socket_id"]
+            # ✅ NEW LOG: Print the encrypted_aes_key right before emitting from backend
+            print(f"🔑 Backend emitting encrypted AES key from {from_user} to {to_user} (first 50 chars): {encrypted_aes_key[:50]}...")
             socketio.emit('receive_aes_key_encrypted', {
                 'from_user': from_user,
                 'encrypted_aes_key': encrypted_aes_key
