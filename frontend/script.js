@@ -3,7 +3,8 @@
 const BASE_URL = "https://securechatapp-ys8y.onrender.com";
 console.log("Connecting to backend:", BASE_URL);
 
-// Initialize Socket.IO connection
+// Initialize Socket.IO connection (for login/registration purposes)
+// Note: A separate socket connection will be managed in chat.js for chat functionality
 const socket = io(BASE_URL);
 
 /**
@@ -21,23 +22,15 @@ function displayAuthMessage(message, isError = false) {
 }
 
 // --- Event Listener for Socket.IO Connection ---
+// This part is primarily for showing connection status on the login page,
+// actual user registration/login is handled via HTTP fetch.
 socket.on('connect', () => {
-  console.log("✅ Socket.IO connected with ID:", socket.id);
-  const username = sessionStorage.getItem("username")?.trim();
-  if (username) {
-    socket.emit("register_user", { username: username });
-    console.log(`Sending 'register_user' for: ${username}`);
-  } else {
-    console.log("No username found in sessionStorage to register upon connect.");
-  }
-});
-
-socket.on('registered', (data) => {
-  console.log("Backend registration confirmation:", data.message);
+  console.log("✅ Socket.IO connected for auth with ID:", socket.id);
+  // No need to emit 'register_user' here, as it's handled after successful login/registration.
 });
 
 socket.on('error', (data) => {
-  console.error("Backend error:", data.message);
+  console.error("Backend error (auth):", data.message);
   displayAuthMessage("Error: " + data.message, true);
 });
 
@@ -73,6 +66,7 @@ async function registerUser() {
     const privateKeyBase64 = btoa(String.fromCharCode(...new Uint8Array(privateKeyBuffer)));
     const privateKeyPem = `-----BEGIN PRIVATE KEY-----\n${privateKeyBase64.match(/.{1,64}/g).join("\n")}\n-----END PRIVATE KEY-----`;
 
+    // Store private key and username in sessionStorage
     sessionStorage.setItem("privateKey", privateKeyPem);
     sessionStorage.setItem("username", username);
 
@@ -91,7 +85,7 @@ async function registerUser() {
     const data = await res.json();
     if (data.success) {
       displayAuthMessage("✅ Registered successfully", false);
-      loginUser(username, pin);
+      loginUser(username, pin); // Automatically log in after successful registration
     } else {
       displayAuthMessage("❌ " + data.message, true);
     }
@@ -122,11 +116,10 @@ async function loginUser(username = null, pin = null) {
     if (data.success) {
       sessionStorage.setItem("username", currentUsername);
       displayAuthMessage("✅ Login successful, redirecting...", false);
-      window.location.href = "chat.html";
+      window.location.href = "chat.html"; // Redirect to chat page
     } else {
       displayAuthMessage("Login failed: " + data.message, true);
-    }
-  } catch (error) {
+    (error) {
     console.error("Error during login:", error);
     displayAuthMessage("Login failed: " + error.message, true);
   }
